@@ -1,0 +1,109 @@
+controller:
+  rest_api_port: 8080
+  poll_interval_sec: 2.0
+  ga_interval_sec: 10.0
+  flow_idle_timeout: 30
+  flow_hard_timeout: 0
+
+vip:
+  ip: "10.0.0.100"
+  mac: "00:00:00:00:00:64"
+
+# Backends must include the switch port they are attached to.
+# In the provided Mininet topology, s1 ports are:
+#  1 -> h1 (client)
+#  2 -> h2
+#  3 -> h3
+#  4 -> h4
+backends:
+  - name: "srv1"
+    ip: "10.0.0.2"
+    mac: "00:00:00:00:00:02"
+    dpid: 1
+    port: 2
+    capacity:
+      cpu_cores: 2
+      mem_gb: 2
+      bw_mbps: 1000
+
+  - name: "srv2"
+    ip: "10.0.0.3"
+    mac: "00:00:00:00:00:03"
+    dpid: 1
+    port: 3
+    capacity:
+      cpu_cores: 2
+      mem_gb: 2
+      bw_mbps: 1000
+
+  - name: "srv3"
+    ip: "10.0.0.4"
+    mac: "00:00:00:00:00:04"
+    dpid: 1
+    port: 4
+    capacity:
+      cpu_cores: 2
+      mem_gb: 2
+      bw_mbps: 1000
+
+clients:
+  - name: "client1"
+    ip: "10.0.0.1"
+    mac: "00:00:00:00:00:01"
+    dpid: 1
+    port: 1
+
+monitoring:
+  # "ryu_stats" uses OpenFlow port stats; it is always available with Mininet.
+  ryu_stats:
+    enabled: true
+
+  # Optional: integrate CPU/memory metrics via Prometheus (node_exporter/cadvisor).
+  prometheus:
+    enabled: false
+    base_url: "http://localhost:9090"
+    timeout_sec: 2
+    # Example PromQL templates. You must adapt labels to your environment.
+    # Available template vars: {instance}
+    promql:
+      cpu_util: 'avg(rate(node_cpu_seconds_total{{mode!="idle",instance="{instance}"}}[1m]))'
+      mem_util: '(1 - (node_memory_MemAvailable_bytes{{instance="{instance}"}} / node_memory_MemTotal_bytes{{instance="{instance}"}}))'
+
+  # Map backend name -> Prometheus instance label.
+  # Example: srv1: "10.0.0.2:9100"
+  instances: {}
+
+hybrid:
+  overload_threshold:
+    cpu: 0.85
+    mem: 0.85
+    bw: 0.85
+    conn: 0.90
+
+  rr:
+    mode: "smooth_weighted"   # "round_robin" or "smooth_weighted"
+
+  ga:
+    population: 30
+    generations: 40
+    crossover_rate: 0.7
+    mutation_rate: 0.2
+    tournament_k: 3
+    elitism: 2
+    seed: 42
+
+    fitness:
+      util_weights:
+        cpu: 0.40
+        mem: 0.30
+        bw: 0.20
+        conn: 0.10
+
+      # GA penalties
+      overload_threshold: 0.85
+      penalty_overload: 3.0
+      penalty_variance: 1.0
+
+      # SLA objective (used as a soft penalty)
+      sla_latency_ms: 200
+      penalty_sla: 5.0

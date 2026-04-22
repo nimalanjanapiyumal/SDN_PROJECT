@@ -1,0 +1,18 @@
+[Unit]
+Description=Adaptive Cloud SDN Integrated API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/adaptive_cloud_sdn_complete
+EnvironmentFile=/opt/adaptive_cloud_sdn_complete/.env
+ExecStart=/opt/adaptive_cloud_sdn_complete/.venv/bin/python -m uvicorn adaptive_cloud_platform.app:app --app-dir /opt/adaptive_cloud_sdn_complete/src --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/adaptive_cloud_sdn_complete
+
+[Install]
+WantedBy=multi-user.target

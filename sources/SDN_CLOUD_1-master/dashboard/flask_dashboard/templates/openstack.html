@@ -1,0 +1,61 @@
+
+{% extends "base.html" %}
+{% block title %}OpenStack · SDN Hybrid Cloud Dashboard{% endblock %}
+{% block page_title %}OpenStack Visibility{% endblock %}
+{% block content %}
+  <section class="two-col">
+    <article class="panel">
+      <div class="panel-title">Connection status</div>
+      <div class="status-banner {% if os_data.status == 'Connected' %}ok{% elif os_data.configured %}warn{% else %}neutral{% endif %}">
+        <div class="status-banner-title">{{ os_data.status }}</div>
+        <div>{{ os_data.guidance }}</div>
+        {% if os_data.error %}<div class="muted">{{ os_data.error }}</div>{% endif %}
+      </div>
+      <table class="info-table compact">
+        <thead><tr><th>Variable</th><th>Status</th><th>Value</th></tr></thead>
+        <tbody>
+          {% for item in os_data.checklist %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ 'Present' if item.present else 'Missing' }}</td>
+              <td>{{ item.value or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>Recommended setup</strong><br>
+        Use <code>OS_CLOUD</code> with a valid <code>clouds.yaml</code> profile, or export Keystone variables such as <code>OS_AUTH_URL</code>, <code>OS_USERNAME</code>, <code>OS_PASSWORD</code>, and <code>OS_PROJECT_NAME</code>.
+      </div>
+      <div class="muted">Discovered clouds.yaml paths: {{ os_data.clouds_found|join(', ') if os_data.clouds_found else 'none found' }}</div>
+    </article>
+    <article class="panel">
+      <div class="panel-title">OpenStack servers</div>
+      <table class="info-table compact">
+        <thead><tr><th>Name</th><th>Status</th><th>Addresses</th></tr></thead>
+        <tbody>
+          {% if os_data.servers %}
+            {% for row in os_data.servers %}
+              <tr><td>{{ row.name }}</td><td>{{ row.status }}</td><td>{{ row.addresses }}</td></tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="3" class="muted">No server data available yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+      <div class="panel-title" style="margin-top:18px;">Networks</div>
+      <table class="info-table compact">
+        <thead><tr><th>Name</th><th>Status</th></tr></thead>
+        <tbody>
+          {% if os_data.networks %}
+            {% for row in os_data.networks %}
+              <tr><td>{{ row.name }}</td><td>{{ row.status }}</td></tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="2" class="muted">No network data available yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </article>
+  </section>
+{% endblock %}

@@ -1,0 +1,12 @@
+clouds:
+  openstack:
+    auth:
+      auth_url: https://your-openstack-endpoint:5000/v3
+      username: your-username
+      password: your-password
+      project_name: your-project
+      user_domain_name: Default
+      project_domain_name: Default
+    region_name: RegionOne
+    interface: public
+    identity_api_version: 3

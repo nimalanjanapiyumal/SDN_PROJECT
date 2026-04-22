@@ -1,0 +1,15 @@
+# Core
+PyYAML>=6.0
+
+# SDN Controller (Ryu includes OpenFlow + WSGI deps like WebOb)
+ryu>=4.34
+WebOb>=1.8.7
+
+# Testing
+pytest>=7.0
+
+# Eventlet remains a Ryu runtime dependency; the launcher patches API compatibility at startup.
+eventlet>=0.33
+
+# Avoid very old dns module compatibility problems on Python 3.10+
+dnspython>=2.2,<3

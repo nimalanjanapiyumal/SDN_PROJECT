@@ -1,0 +1,20 @@
+{
+  "id": null,
+  "title": "Adaptive Cloud SDN Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Decision Count",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "adaptive_decisions_total"}]
+    },
+    {
+      "type": "stat",
+      "title": "Security Actions",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "adaptive_security_actions_total"}]
+    }
+  ]
+}

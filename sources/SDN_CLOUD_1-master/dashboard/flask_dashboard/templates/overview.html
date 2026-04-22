@@ -1,0 +1,110 @@
+
+{% extends "base.html" %}
+{% block title %}Overview · SDN Hybrid Cloud Dashboard{% endblock %}
+{% block page_title %}Operations Overview{% endblock %}
+{% block content %}
+  {% if status_error %}
+    <section class="panel danger">
+      <div class="panel-title">Controller connection issue</div>
+      <p>{{ status_error }}</p>
+      <p class="muted">Start the controller first, then refresh this page. The dashboard expects <code>{{ controller_api_url }}/lb/status</code>.</p>
+    </section>
+  {% endif %}
+
+  <section class="card-grid metrics-grid">
+    {% for card in cards %}
+      <article class="metric-card">
+        <div class="metric-label">{{ card.label }}</div>
+        <div class="metric-value">{{ card.value }}</div>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="two-col">
+    <article class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Backend health and utilization</div>
+          <div class="panel-subtitle">Health, RR/GA weights, connections, and real-time utilization bars.</div>
+        </div>
+      </div>
+      {% if status %}
+        <div class="backend-list">
+          {% for backend in status.backends %}
+            {% set m = backend.metrics %}
+            <div class="backend-card {% if not backend.healthy %}is-down{% endif %}">
+              <div class="backend-header">
+                <div>
+                  <div class="backend-name">{{ backend.name }}</div>
+                  <div class="backend-meta">{{ backend.ip }} · port {{ backend.port }}</div>
+                </div>
+                <div class="status-pill {% if backend.healthy %}ok{% else %}down{% endif %}">
+                  {{ 'Healthy' if backend.healthy else 'Down' }}
+                </div>
+              </div>
+              <div class="backend-bars">
+                <div class="bar-row"><span>CPU</span><div class="bar"><div style="width: {{ ((m.cpu_util or 0) * 100)|round(1) }}%"></div></div><strong>{{ ((m.cpu_util or 0) * 100)|round(1) }}%</strong></div>
+                <div class="bar-row"><span>Memory</span><div class="bar"><div style="width: {{ ((m.mem_util or 0) * 100)|round(1) }}%"></div></div><strong>{{ ((m.mem_util or 0) * 100)|round(1) }}%</strong></div>
+                <div class="bar-row"><span>Bandwidth</span><div class="bar"><div style="width: {{ ((m.bw_util or 0) * 100)|round(1) }}%"></div></div><strong>{{ ((m.bw_util or 0) * 100)|round(1) }}%</strong></div>
+              </div>
+              <div class="backend-metrics-grid">
+                <div><span>Active flows</span><strong>{{ m.active_connections or 0 }}</strong></div>
+                <div><span>Throughput</span><strong>{{ (m.throughput_mbps or 0)|round(2) }} Mbps</strong></div>
+                <div><span>Latency</span><strong>{{ (m.latency_ms or 0)|round(2) }} ms</strong></div>
+                <div><span>Weight</span><strong>{{ ((status.weights.get(backend.name, backend.weight) or 0) * 100)|round(2) }}%</strong></div>
+              </div>
+              <div class="button-row">
+                <form method="post" action="{{ url_for('backend_health', name=backend.name, state='up') }}"><button class="btn btn-ghost" type="submit">Mark Healthy</button></form>
+                <form method="post" action="{{ url_for('backend_health', name=backend.name, state='down') }}"><button class="btn btn-danger" type="submit">Mark Down</button></form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">No backend data available yet.</p>
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="panel-title">Controller and topology summary</div>
+      {% if status %}
+        <div class="topology-box">
+          <div class="topology-client">Client<br><strong>10.0.0.1</strong></div>
+          <div class="topology-vip">VIP<br><strong>{{ status.vip.ip }}</strong></div>
+          <div class="topology-servers">
+            {% for backend in status.backends %}
+              <div class="topology-server {% if not backend.healthy %}is-down{% endif %}">
+                {{ backend.name }}<br><small>{{ backend.ip }}</small>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <table class="info-table">
+          <tr><th>VIP MAC</th><td>{{ status.vip.mac }}</td></tr>
+          <tr><th>GA interval</th><td>{{ status.controller.ga_interval_sec }} s</td></tr>
+          <tr><th>Poll interval</th><td>{{ status.controller.poll_interval_sec }} s</td></tr>
+          <tr><th>RR mode</th><td>{{ status.controller.rr_mode }}</td></tr>
+          <tr><th>Active flows</th><td>{{ status.active_flows }}</td></tr>
+        </table>
+        <div class="callout">
+          <strong>Prometheus is optional.</strong> Even without it, the controller already exposes flow count and bandwidth-derived metrics using OpenFlow port statistics. Prometheus adds CPU and memory utilization per backend when you map exporter instances in <code>config.controller.yaml</code>.
+        </div>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="card-grid chart-grid">
+    <article class="panel chart-panel">
+      <div class="panel-title">Per-backend utilization</div>
+      <canvas class="chart-canvas" data-chart="grouped-bars" data-payload='{{ chart_payload|tojson }}'></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-title">Throughput and active connections</div>
+      <canvas class="chart-canvas" data-chart="dual-bars" data-payload='{{ chart_payload|tojson }}'></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-title">GA weight distribution</div>
+      <canvas class="chart-canvas" data-chart="weights" data-payload='{{ chart_payload|tojson }}'></canvas>
+    </article>
+  </section>
+{% endblock %}

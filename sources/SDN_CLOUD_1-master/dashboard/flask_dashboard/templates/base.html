@@ -1,0 +1,58 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}SDN Hybrid Cloud Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}" />
+    <script defer src="{{ url_for('static', filename='dashboard.js') }}"></script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">SDN</div>
+          <div>
+            <div class="brand-title">Adaptive Cloud Control</div>
+            <div class="brand-subtitle">Hybrid RR + GA Load Balancing</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav-link {% if request.path in ['/', '/overview'] %}active{% endif %}" href="{{ url_for('overview') }}">Overview</a>
+          <a class="nav-link {% if request.path == '/openstack' %}active{% endif %}" href="{{ url_for('openstack_page') }}">OpenStack</a>
+          <a class="nav-link {% if request.path == '/testing' %}active{% endif %}" href="{{ url_for('testing_page') }}">Testing & Evaluation</a>
+        </nav>
+        <div class="sidebar-note">
+          <div class="note-title">Controller API</div>
+          <div class="note-value">{{ controller_api_url }}</div>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+            <p class="page-subtitle">Live visibility for SDN, cloud resources, testing, and operational controls.</p>
+          </div>
+          <div class="topbar-actions">
+            <form method="post" action="{{ url_for('recompute') }}">
+              <button class="btn btn-primary" type="submit">Run GA Recompute</button>
+            </form>
+          </div>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-list">
+              {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>

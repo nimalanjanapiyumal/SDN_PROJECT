@@ -1,0 +1,41 @@
+openapi: 3.1.0
+info:
+  title: Adaptive Cloud SDN Integrated API
+  version: 1.0.0
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: ok
+  /api/v1/intents:
+    post:
+      summary: Submit a high-level intent
+  /api/v1/context:
+    post:
+      summary: Submit monitoring or context update
+  /api/v1/resource-plans:
+    post:
+      summary: Submit optimizer recommendation
+  /api/v1/security-actions:
+    post:
+      summary: Submit security action
+  /api/v1/state:
+    get:
+      summary: Return integrated state snapshot
+  /api/intent/submit:
+    post:
+      summary: Component-3 compatible intent endpoint
+  /api/context/update:
+    post:
+      summary: Component-2/3 compatible context endpoint
+  /api/network/hosts:
+    get:
+      summary: Host inventory endpoint
+  /sdn/block:
+    post:
+      summary: Compatibility endpoint for block actions
+  /sdn/quarantine:
+    post:
+      summary: Compatibility endpoint for quarantine actions

@@ -1,0 +1,29 @@
+services:
+  integrated-api:
+    build: .
+    container_name: adaptive-cloud-api
+    command: ["python", "-m", "uvicorn", "adaptive_cloud_platform.app:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8080"]
+    env_file:
+      - .env
+    volumes:
+      - ./:/opt/app
+    ports:
+      - "8080:8080"
+      - "9108:9108"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: adaptive-cloud-prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: adaptive-cloud-grafana
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"

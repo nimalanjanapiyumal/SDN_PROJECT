@@ -1,0 +1,29 @@
+groups:
+  - name: sdn_adaptive_cloud_alerts
+    rules:
+      - alert: HighLinkUtilization
+        expr: max(cloud_sdn_link_utilization_ratio) > 0.85
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: High SDN link utilization
+          description: Link utilization has stayed above 85 percent for at least 30 seconds.
+
+      - alert: HighPredictionRisk
+        expr: cloud_sdn_sla_risk_score > 0.75
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: Elevated SLA risk
+          description: The ML policy agent predicts a sustained SLA risk above 0.75.
+
+      - alert: HighPacketInRate
+        expr: cloud_sdn_packet_in_rate_per_sec > 50
+        for: 20s
+        labels:
+          severity: warning
+        annotations:
+          summary: Elevated packet-in rate
+          description: Controller packet-in rate is abnormally high, which can indicate scanning or attack traffic.

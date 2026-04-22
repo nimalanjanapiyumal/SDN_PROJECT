@@ -1,0 +1,94 @@
+
+{% extends "base.html" %}
+{% block title %}Testing & Evaluation · SDN Hybrid Cloud Dashboard{% endblock %}
+{% block page_title %}Testing & Evaluation{% endblock %}
+{% block content %}
+  <section class="two-col">
+    <article class="panel">
+      <div class="panel-title">Testing and evaluation plan</div>
+      <table class="info-table compact long-table">
+        <thead><tr><th>Test area</th><th>Goal</th><th>Command</th><th>Metrics</th></tr></thead>
+        <tbody>
+          <tr><td>Functional integration</td><td>Verify controller, Mininet, VIP ARP, backend health toggle, and GA recompute.</td><td><code>h1 ping -c 2 10.0.0.100; h1 curl http://10.0.0.100:8000</code></td><td>Controller up, VIP reachable, JSON response shows backend name, flow count increments.</td></tr>
+          <tr><td>Performance and scalability</td><td>Measure latency, throughput, errors, and SLA compliance under increasing concurrency.</td><td><code>h1 python3 tools/http_benchmark.py --url http://10.0.0.100:8000 --concurrency 20 --duration 20 --sla-ms 200 --json /tmp/http_20.json</code></td><td>req/s, p50, p95, error %, SLA &lt;= 200 ms, active flows.</td></tr>
+          <tr><td>Traffic throughput</td><td>Measure network throughput with iperf3 against the VIP.</td><td><code>h1 python3 tools/iperf3_benchmark.py --vip 10.0.0.100 --port 5201 --duration 15 --parallel 4 --json /tmp/iperf.json</code></td><td>Mbps, retransmits if available, parallel stream behavior.</td></tr>
+          <tr><td>Fault tolerance</td><td>Simulate backend failure and verify traffic shifts to healthy nodes.</td><td><code>POST /lb/health/srv1 {"healthy": false}</code>, then repeat curl/benchmark.</td><td>Requests continue via remaining nodes, minimal error spike, backend health reflected in dashboard.</td></tr>
+        </tbody>
+      </table>
+    </article>
+    <article class="panel">
+      <div class="panel-title">Required metrics for section 3.1.5</div>
+      <table class="info-table compact">
+        <thead><tr><th>Category</th><th>Metrics</th></tr></thead>
+        <tbody>
+          <tr><td>Functional testing</td><td>Controller API health, VIP ARP response, backend JSON reply, health toggle effect, GA recompute success</td></tr>
+          <tr><td>Performance</td><td>HTTP req/s, p50 latency, p95 latency, error rate, SLA compliance %, active flows</td></tr>
+          <tr><td>Scalability</td><td>Throughput under concurrency 10 / 20 / 50, backend distribution balance, bandwidth utilization</td></tr>
+          <tr><td>Resource usage</td><td>Per-backend CPU %, memory %, bandwidth %, active connections, aggregate throughput Mbps</td></tr>
+          <tr><td>Fault tolerance</td><td>Service continuity after backend failure, traffic shift time, reduced but stable throughput, error spike duration</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>Prometheus is optional.</strong> Even without it, the controller already exposes flow count and bandwidth-derived metrics using OpenFlow port statistics. Prometheus adds CPU and memory utilization per backend when you map exporter instances in <code>config.controller.yaml</code>.
+      </div>
+    </article>
+  </section>
+
+  <section class="two-col">
+    <article class="panel">
+      <div class="panel-title">Testing actions</div>
+      {% if status and status.backends %}
+        <div class="button-grid">
+          <form method="post"><input type="hidden" name="action" value="recompute"><button class="btn btn-primary" type="submit">Run GA recompute</button></form>
+          {% for backend in status.backends %}
+            <form method="post"><input type="hidden" name="action" value="health:{{ backend.name }}:up"><button class="btn btn-ghost" type="submit">{{ backend.name }} healthy</button></form>
+            <form method="post"><input type="hidden" name="action" value="health:{{ backend.name }}:down"><button class="btn btn-danger" type="submit">{{ backend.name }} down</button></form>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">Controller data is not available yet, so testing actions are hidden.</p>
+      {% endif %}
+    </article>
+    <article class="panel">
+      <div class="panel-title">Upload benchmark JSON</div>
+      <div class="upload-grid">
+        <form method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="hidden" name="action" value="upload_http">
+          <label>HTTP benchmark JSON</label>
+          <input type="file" name="http_file" accept="application/json,.json">
+          <button class="btn btn-primary" type="submit">Upload HTTP result</button>
+        </form>
+        <form method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="hidden" name="action" value="upload_iperf">
+          <label>iperf3 benchmark JSON</label>
+          <input type="file" name="iperf_file" accept="application/json,.json">
+          <button class="btn btn-primary" type="submit">Upload iperf3 result</button>
+        </form>
+        <form method="post" class="upload-form danger-form">
+          <input type="hidden" name="action" value="clear_results">
+          <label>Clear imported benchmark data</label>
+          <button class="btn btn-danger" type="submit">Clear results</button>
+        </form>
+      </div>
+    </article>
+  </section>
+
+  <section class="card-grid chart-grid">
+    <article class="panel chart-panel">
+      <div class="panel-title">HTTP throughput by concurrency</div>
+      <canvas class="chart-canvas" data-chart="testing-throughput" data-payload='{{ testing_payload|tojson }}'></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-title">HTTP p95 latency by concurrency</div>
+      <canvas class="chart-canvas" data-chart="testing-p95" data-payload='{{ testing_payload|tojson }}'></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-title">SLA compliance by concurrency</div>
+      <canvas class="chart-canvas" data-chart="testing-sla" data-payload='{{ testing_payload|tojson }}'></canvas>
+    </article>
+    <article class="panel chart-panel">
+      <div class="panel-title">iperf3 throughput by parallel streams</div>
+      <canvas class="chart-canvas" data-chart="testing-iperf" data-payload='{{ testing_payload|tojson }}'></canvas>
+    </article>
+  </section>
+{% endblock %}

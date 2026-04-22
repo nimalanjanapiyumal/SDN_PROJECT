@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.log
+.venv/
+.pytest_cache/
+ml/models/*.joblib
+ml/models/training_report.json
+data/synthetic_sdn_dataset.csv
+.idea/
+*.iml
+.vscode/
+logs/*.log
+run/*.pid
+.DS_Store
