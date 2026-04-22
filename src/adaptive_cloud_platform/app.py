@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import time
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST, start_http_server
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from pathlib import Path
 
 from adaptive_cloud_platform.config import get_runtime_config
 from adaptive_cloud_platform.models import (
@@ -32,6 +34,8 @@ ml_service = MLService()
 security_service = SecurityService()
 
 app = FastAPI(title='Adaptive Cloud SDN Integrated API', version='1.0.0')
+FRONTEND_DIR = Path(__file__).resolve().parent / 'frontend'
+app.mount('/frontend', StaticFiles(directory=FRONTEND_DIR), name='frontend')
 
 METRIC_DECISIONS = Counter('adaptive_decisions_total', 'Total decisions made by the integrated orchestrator')
 METRIC_SECURITY = Counter('adaptive_security_actions_total', 'Total security actions received by the orchestrator')
@@ -42,6 +46,16 @@ try:
     start_http_server(runtime.prometheus_exporter_port, addr='0.0.0.0')
 except OSError:
     pass
+
+
+@app.get('/', include_in_schema=False)
+def frontend() -> FileResponse:
+    return FileResponse(FRONTEND_DIR / 'index.html')
+
+
+@app.get('/favicon.ico', include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(FRONTEND_DIR / 'favicon.svg', media_type='image/svg+xml')
 
 
 @app.get('/healthz')

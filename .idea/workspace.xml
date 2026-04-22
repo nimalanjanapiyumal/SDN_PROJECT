@@ -6,6 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init2">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

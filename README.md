@@ -29,9 +29,16 @@ curl -s http://127.0.0.1:8080/healthz
 curl -s http://127.0.0.1:8080/api/v1/state | jq
 ```
 
+Open the integrated frontend at:
+
+```text
+http://127.0.0.1:8080/
+```
+
 ## Main directories
 
 - `src/adaptive_cloud_platform/` - new integrated services and API
+- `src/adaptive_cloud_platform/frontend/` - no-build frontend dashboard, structured by Components 1-4
 - `src/sdn_hybrid_lb/` - reusable hybrid optimization code
 - `src/ml/` - monitoring/ML helpers from the monitoring component
 - `src/security_modules/` - security services from the security component
