@@ -7,3 +7,4 @@ def test_openapi_contains_core_paths():
     assert '/api/v1/intents' in data['paths']
     assert '/api/v1/context' in data['paths']
     assert '/api/v1/security-actions' in data['paths']
+    assert '/api/v1/component-2/telemetry' in data['paths']

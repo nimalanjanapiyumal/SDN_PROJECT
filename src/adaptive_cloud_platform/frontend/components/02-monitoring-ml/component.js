@@ -12,15 +12,20 @@ export const monitoringMl = {
     "monitoring/"
   ],
   routes: [
+    "GET /api/v1/component-2/status",
+    "POST /api/v1/component-2/telemetry",
+    "POST /api/v1/component-2/models/train",
+    "GET /api/v1/component-2/platform",
     "POST /api/v1/context",
     "GET /api/v1/state",
     "GET /metrics"
   ],
   capabilities: [
-    "Network context submission",
-    "Latency and packet-rate tracking",
-    "Anomaly and congestion recommendation",
-    "Prometheus exporter compatibility"
+    "Network telemetry ingestion and history",
+    "Latency, throughput, CPU, memory, flow, and packet-in tracking",
+    "ML anomaly, congestion, DDoS, and port-scan prediction",
+    "Automatic feedback into Component 1 allocation and orchestration",
+    "Prometheus exporter and Grafana dashboard compatibility"
   ],
-  signals: ["latency_ms", "packet_in_rate_per_sec", "max_link_utilization_ratio", "recommendation"]
+  signals: ["active_flows", "packet_rate_per_sec", "max_link_utilization_ratio", "label", "sla_risk_score"]
 };

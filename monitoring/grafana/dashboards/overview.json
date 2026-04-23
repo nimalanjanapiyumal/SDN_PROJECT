@@ -1,20 +1,63 @@
 {
   "id": null,
-  "title": "Adaptive Cloud SDN Overview",
+  "title": "Adaptive Cloud SDN - Component 2 Monitoring and ML",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "refresh": "5s",
   "panels": [
     {
       "type": "stat",
-      "title": "Decision Count",
+      "title": "Integrated Decisions",
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
       "targets": [{"expr": "adaptive_decisions_total"}]
     },
     {
       "type": "stat",
-      "title": "Security Actions",
+      "title": "ML Predictions",
       "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "sum(adaptive_component2_predictions_total)"}]
+    },
+    {
+      "type": "stat",
+      "title": "Policy Feedback",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "adaptive_component2_policy_feedback_total"}]
+    },
+    {
+      "type": "stat",
+      "title": "Security Actions",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
       "targets": [{"expr": "adaptive_security_actions_total"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prediction Confidence",
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "adaptive_component2_prediction_confidence"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "SLA Risk Score",
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "adaptive_component2_sla_risk_score"}]
+    },
+    {
+      "type": "bargauge",
+      "title": "Prediction Classes",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 11},
+      "targets": [{"expr": "sum by (label) (adaptive_component2_predictions_total)"}]
+    },
+    {
+      "type": "stat",
+      "title": "Component 1 GA Recomputation",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 11},
+      "targets": [{"expr": "adaptive_component1_ga_recomputes_total"}]
+    },
+    {
+      "type": "stat",
+      "title": "Component 1 Routes",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 11},
+      "targets": [{"expr": "adaptive_component1_routes_total"}]
     }
   ]
 }

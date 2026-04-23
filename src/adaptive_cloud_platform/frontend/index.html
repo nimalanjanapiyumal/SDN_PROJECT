@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Adaptive Cloud SDN Console</title>
+    <title>Component 1 Hybrid Load Balancing Console</title>
     <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/frontend/assets/css/styles.css" />
   </head>
@@ -19,7 +19,7 @@
           </span>
           <span>
             <strong>Adaptive SDN</strong>
-            <small>Integrated Cloud Console</small>
+            <small>Component 1 Console</small>
           </span>
         </div>
 
@@ -39,10 +39,11 @@
       </aside>
 
       <main class="main">
-        <header class="topbar">
+        <header class="topbar hero-header">
           <div>
-            <p class="eyebrow">25-26J-036</p>
-            <h1>SDN-Based Adaptive Cloud Network Management</h1>
+            <p class="eyebrow">Component 1 | Hybrid Load Balancing Algorithm</p>
+            <h1>SDN-Based Cloud Resource Allocation</h1>
+            <p class="headline-copy">Round Robin handles real-time forwarding while Genetic Algorithm planning continuously improves CPU, memory, bandwidth, and SLA balance.</p>
           </div>
           <div class="topbar-actions">
             <label class="toggle">
@@ -57,210 +58,338 @@
           </div>
         </header>
 
-        <section class="hero-grid" aria-label="Live operations dashboard">
+        <section class="kpi-grid" aria-label="Component 1 runtime metrics">
+          <article class="kpi-card primary">
+            <span>RR Decisions</span>
+            <strong id="rrDecisionCount">0</strong>
+            <em>real-time routing</em>
+          </article>
+          <article class="kpi-card">
+            <span>GA Runs</span>
+            <strong id="gaRunCount">0</strong>
+            <em>optimization cycles</em>
+          </article>
+          <article class="kpi-card">
+            <span>Active Flows</span>
+            <strong id="activeFlowCount">0</strong>
+            <em>installed rules</em>
+          </article>
+          <article class="kpi-card">
+            <span>SLA Compliance</span>
+            <strong id="slaCompliance">100%</strong>
+            <em id="slaTarget">target 200 ms</em>
+          </article>
+          <article class="kpi-card">
+            <span>Healthy Backends</span>
+            <strong id="healthyBackendCount">0/0</strong>
+            <em>fault tolerance</em>
+          </article>
+        </section>
+
+        <section class="hero-grid" aria-label="Hybrid load-balancing operations">
           <div class="operations-board">
             <div class="board-header">
               <div>
-                <p class="eyebrow">Control plane</p>
-                <h2>Decision Spine</h2>
+                <p class="eyebrow">SDN control plane</p>
+                <h2>Hybrid Routing Pipeline</h2>
               </div>
-              <button class="primary-button" id="recomputeBtn" type="button">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M4 6h8v2H7.4l2.1 2.1-1.4 1.4L3.6 7l4.5-4.5 1.4 1.4L7.4 6H4Zm16 12h-8v-2h4.6l-2.1-2.1 1.4-1.4 4.5 4.5-4.5 4.5-1.4-1.4 2.1-2.1H20Z" />
-                </svg>
-                Recompute Plan
-              </button>
+              <div class="button-row">
+                <button class="primary-button" id="routeRequestBtn" type="button">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="m3 11 18-8-8 18-2-7-8-3Zm6.7 1.3 2 2 2.6-5.9-4.6 3.9Z" />
+                  </svg>
+                  Route Request
+                </button>
+                <button class="secondary-button" id="recomputeBtn" type="button">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 6h8v2H7.4l2.1 2.1-1.4 1.4L3.6 7l4.5-4.5 1.4 1.4L7.4 6H4Zm16 12h-8v-2h4.6l-2.1-2.1 1.4-1.4 4.5 4.5-4.5 4.5-1.4-1.4 2.1-2.1H20Z" />
+                  </svg>
+                  Run GA
+                </button>
+              </div>
             </div>
 
-            <div class="topology-map" aria-label="Integrated component flow">
-              <div class="node node-client">Clients</div>
-              <div class="node node-controller">FastAPI Orchestrator</div>
-              <div class="node node-network">SDN Fabric</div>
-              <div class="node node-monitor">Prometheus / ML</div>
-              <div class="node node-security">Security Engine</div>
-              <div class="node node-optimizer">RR + GA Optimizer</div>
-              <div class="flow flow-a"></div>
-              <div class="flow flow-b"></div>
-              <div class="flow flow-c"></div>
-              <div class="flow flow-d"></div>
-            </div>
-
-            <div class="metric-grid">
-              <article class="metric-card">
-                <span>Decisions</span>
-                <strong id="decisionCount">0</strong>
-              </article>
-              <article class="metric-card">
-                <span>Active Policies</span>
-                <strong id="policyCount">0</strong>
-              </article>
-              <article class="metric-card">
-                <span>Hosts</span>
-                <strong id="hostCount">0</strong>
-              </article>
-              <article class="metric-card">
-                <span>Backends</span>
-                <strong id="backendCount">0</strong>
-              </article>
+            <div class="component-one-map" aria-label="Component 1 use-case pipeline">
+              <div class="actor actor-user">Cloud User</div>
+              <div class="pipe-node node-request">Request Resources</div>
+              <div class="pipe-node node-analyze">Analyze Workload</div>
+              <div class="pipe-node node-rr">Apply RR</div>
+              <div class="pipe-node node-ga">Optimize with GA</div>
+              <div class="pipe-node node-update">Update Flow Rules</div>
+              <div class="pipe-node node-monitoring">Monitor Performance</div>
+              <div class="pipe-node node-allocate">Allocate Resources</div>
+              <div class="actor actor-controller">SDN Controller</div>
+              <div class="actor actor-flow">Flow Rule Manager</div>
+              <div class="actor actor-switch">Switches</div>
+              <span class="connector c1"></span>
+              <span class="connector c2"></span>
+              <span class="connector c3"></span>
+              <span class="connector c4"></span>
+              <span class="connector c5"></span>
+              <span class="connector c6"></span>
+              <span class="connector c7"></span>
             </div>
           </div>
 
           <aside class="decision-panel">
             <div class="panel-heading">
-              <p class="eyebrow">Latest execution</p>
-              <h2 id="latestDecisionTitle">Observe</h2>
+              <p class="eyebrow">Latest Component 1 action</p>
+              <h2 id="latestDecisionTitle">Standby</h2>
             </div>
             <dl class="decision-list">
               <div>
-                <dt>Source</dt>
-                <dd id="latestDecisionSource">none</dd>
+                <dt>Backend</dt>
+                <dd id="latestBackend">none</dd>
               </div>
               <div>
-                <dt>Score</dt>
-                <dd id="latestDecisionScore">0</dd>
+                <dt>Algorithm</dt>
+                <dd id="latestAlgorithm">smooth_weighted</dd>
               </div>
               <div>
-                <dt>Mode</dt>
-                <dd id="latestDecisionMode">record</dd>
+                <dt>Latency</dt>
+                <dd id="latestLatency">0 ms</dd>
               </div>
             </dl>
             <pre id="latestDecisionJson">{}</pre>
           </aside>
         </section>
 
-        <section class="workspace-grid" aria-label="Component workspace">
+        <section class="workspace-grid" aria-label="Component 1 control workspace">
           <div class="component-panel" id="componentPanel"></div>
 
           <div class="forms-panel">
             <div class="section-title">
-              <p class="eyebrow">Northbound input</p>
-              <h2>Component Actions</h2>
+              <p class="eyebrow">Controller functions</p>
+              <h2>Component 1 Actions</h2>
             </div>
 
-            <div class="tabs" role="tablist" aria-label="Action forms">
-              <button class="tab active" data-tab="intent" type="button">Intent</button>
-              <button class="tab" data-tab="context" type="button">Context</button>
-              <button class="tab" data-tab="security" type="button">Security</button>
+            <div class="tabs" role="tablist" aria-label="Component 1 forms">
+              <button class="tab active" data-tab="request" type="button">Request</button>
+              <button class="tab" data-tab="metrics" type="button">Metrics</button>
+              <button class="tab" data-tab="simulate" type="button">Simulate</button>
             </div>
 
-            <form class="action-form active" id="intentForm" data-pane="intent">
+            <form class="action-form active" id="requestForm" data-pane="request">
               <label>
-                Type
-                <select id="intentType">
-                  <option value="security">security</option>
-                  <option value="load_balance">load_balance</option>
-                  <option value="reroute">reroute</option>
-                  <option value="allow">allow</option>
-                </select>
+                Client IP
+                <input id="routeClientIp" type="text" value="10.0.0.1" />
               </label>
               <label>
-                Priority
-                <input id="intentPriority" type="number" min="1" max="10" value="5" />
+                Client Port
+                <input id="routeClientPort" type="number" min="1" max="65535" value="41001" />
               </label>
               <label>
-                Source IP
-                <input id="intentSrc" type="text" value="10.0.0.2" />
+                VIP Port
+                <input id="routeVipPort" type="number" min="1" max="65535" value="8000" />
               </label>
               <label>
-                Destination IP
-                <input id="intentDst" type="text" value="10.0.0.100" />
-              </label>
-              <label class="wide">
-                Intent
-                <input id="intentText" type="text" value="Prioritize safe application traffic" />
+                Size KB
+                <input id="routeSize" type="number" min="0" value="128" />
               </label>
               <button class="submit-button" type="submit">
                 <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="m3 11 18-8-8 18-2-7-8-3Zm6.7 1.3 2 2 2.6-5.9-4.6 3.9Z" />
+                  <path d="M13 5v6h6v2h-6v6h-2v-6H5v-2h6V5h2Z" />
                 </svg>
-                Submit Intent
+                Install Flow Rule
               </button>
             </form>
 
-            <form class="action-form" id="contextForm" data-pane="context">
+            <form class="action-form" id="metricForm" data-pane="metrics">
               <label>
-                Link Utilization
-                <input id="linkUtil" type="range" min="0" max="100" value="76" />
+                Backend
+                <select id="metricBackend"></select>
               </label>
               <label>
                 Latency ms
-                <input id="latencyMs" type="number" min="0" value="145" />
+                <input id="metricLatency" type="number" min="0" value="85" />
               </label>
               <label>
-                Packet-In rate
-                <input id="packetRate" type="number" min="0" value="280" />
+                CPU %
+                <input id="metricCpu" type="number" min="0" max="100" value="55" />
               </label>
               <label>
-                Controller CPU
-                <input id="controllerCpu" type="number" min="0" max="100" value="62" />
+                Memory %
+                <input id="metricMemory" type="number" min="0" max="100" value="48" />
               </label>
-              <button class="ghost-button" data-scenario="normal" type="button">Normal</button>
-              <button class="ghost-button" data-scenario="congestion" type="button">Congestion</button>
-              <button class="ghost-button" data-scenario="ddos" type="button">DDoS</button>
+              <label>
+                Bandwidth %
+                <input id="metricBandwidth" type="number" min="0" max="100" value="42" />
+              </label>
+              <label>
+                Throughput Mbps
+                <input id="metricThroughput" type="number" min="0" value="320" />
+              </label>
+              <button class="ghost-button" data-metric-scenario="balanced" type="button">Balanced</button>
+              <button class="ghost-button" data-metric-scenario="overload" type="button">Overload</button>
               <button class="submit-button" type="submit">
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M4 5h16v4H4V5Zm0 6h10v4H4v-4Zm0 6h16v2H4v-2Zm12-5 5 3-5 3v-6Z" />
                 </svg>
-                Publish Context
+                Update Metrics
               </button>
             </form>
 
-            <form class="action-form" id="securityForm" data-pane="security">
+            <form class="action-form" id="simulationForm" data-pane="simulate">
               <label>
-                Action
-                <select id="securityAction">
-                  <option value="block">block</option>
-                  <option value="quarantine">quarantine</option>
-                  <option value="release">release</option>
-                  <option value="allow">allow</option>
-                </select>
+                Requests
+                <input id="simulationRequests" type="number" min="1" max="500" value="36" />
               </label>
               <label>
-                Subject
-                <input id="securitySubject" type="text" value="10.0.0.9" />
-              </label>
-              <label>
-                Severity
-                <input id="securitySeverity" type="number" min="1" max="5" value="5" />
+                Start Port
+                <input id="simulationStartPort" type="number" min="1" max="65535" value="43000" />
               </label>
               <label class="wide">
-                Reason
-                <input id="securityReason" type="text" value="CTI match from threat feed" />
+                Fault Backend
+                <select id="simulationFaultBackend">
+                  <option value="">None</option>
+                </select>
               </label>
+              <button class="ghost-button" id="resetComponentBtn" type="button">Reset Runtime</button>
               <button class="submit-button" type="submit">
                 <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M12 2 20 6v6c0 5-3.4 8.7-8 10-4.6-1.3-8-5-8-10V6l8-4Zm0 3.2L7 7.7V12c0 3.4 2 5.8 5 6.9 3-1.1 5-3.5 5-6.9V7.7l-5-2.5Zm3.5 4.1 1.4 1.4-5.6 5.6-3.2-3.2 1.4-1.4 1.8 1.8 4.2-4.2Z" />
+                  <path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" />
                 </svg>
-                Enforce Security
+                Run Workload
               </button>
             </form>
           </div>
         </section>
 
-        <section class="lower-grid" aria-label="Runtime details">
+        <section class="lower-grid" aria-label="Component 1 runtime details">
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">Component 1</p>
-              <h2>Backend Weights</h2>
+              <p class="eyebrow">Resource pool</p>
+              <h2>Backend Weights and Health</h2>
             </div>
             <div id="backendList" class="backend-list"></div>
           </div>
 
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">Activity</p>
-              <h2>Recent Events</h2>
+              <p class="eyebrow">Flow manager</p>
+              <h2>Recent Flow Rules</h2>
             </div>
-            <div id="eventTimeline" class="timeline"></div>
+            <div id="flowRuleList" class="flow-rule-list"></div>
           </div>
         </section>
 
         <section class="api-matrix" aria-label="Component API matrix">
           <div class="section-title">
-            <p class="eyebrow">Folder and route map</p>
-            <h2>Component Relatability Structure</h2>
+            <p class="eyebrow">Implementation map</p>
+            <h2>Component 1 Feature Coverage</h2>
           </div>
           <div id="apiMatrix" class="matrix-grid"></div>
+        </section>
+
+        <section class="component-two-section" aria-label="Component 2 monitoring and ML workspace">
+          <div class="section-title">
+            <p class="eyebrow">Component 2</p>
+            <h2>Monitoring, Visualization, and ML Intelligence</h2>
+          </div>
+
+          <div class="component-two-grid">
+            <article class="kpi-card">
+              <span>Telemetry Points</span>
+              <strong id="c2TelemetryCount">0</strong>
+              <em>monitoring samples</em>
+            </article>
+            <article class="kpi-card">
+              <span>Predictions</span>
+              <strong id="c2PredictionCount">0</strong>
+              <em>ML inferences</em>
+            </article>
+            <article class="kpi-card">
+              <span>Latest Label</span>
+              <strong id="c2LatestLabel">none</strong>
+              <em id="c2LatestConfidence">0% confidence</em>
+            </article>
+            <article class="kpi-card">
+              <span>SLA Risk</span>
+              <strong id="c2RiskScore">0%</strong>
+              <em id="c2MitigationLatency">latency pending</em>
+            </article>
+          </div>
+
+          <div class="workspace-grid">
+            <div class="forms-panel">
+              <div class="section-title">
+                <p class="eyebrow">Telemetry input</p>
+                <h2>Predict and Feed SDN Policy</h2>
+              </div>
+              <form class="component-two-form" id="componentTwoTelemetryForm">
+                <label>
+                  Active Flows
+                  <input id="c2ActiveFlows" type="number" min="0" value="45" />
+                </label>
+                <label>
+                  Packet Rate / sec
+                  <input id="c2PacketRate" type="number" min="0" value="2200" />
+                </label>
+                <label>
+                  Byte Rate / sec
+                  <input id="c2ByteRate" type="number" min="0" value="4500000" />
+                </label>
+                <label>
+                  Link Utilization
+                  <input id="c2LinkUtil" type="number" min="0" max="1" step="0.01" value="0.34" />
+                </label>
+                <label>
+                  Controller CPU %
+                  <input id="c2Cpu" type="number" min="0" max="100" value="24" />
+                </label>
+                <label>
+                  Controller Memory %
+                  <input id="c2Memory" type="number" min="0" max="100" value="32" />
+                </label>
+                <label>
+                  Packet-In / sec
+                  <input id="c2PacketIn" type="number" min="0" value="6" />
+                </label>
+                <label>
+                  Observed Label
+                  <select id="c2ObservedLabel">
+                    <option value="">Unknown</option>
+                    <option value="normal">normal</option>
+                    <option value="congestion">congestion</option>
+                    <option value="ddos">ddos</option>
+                    <option value="port_scan">port_scan</option>
+                  </select>
+                </label>
+                <div class="scenario-row">
+                  <button class="ghost-button" data-c2-scenario="normal" type="button">Normal</button>
+                  <button class="ghost-button" data-c2-scenario="congestion" type="button">Congestion</button>
+                  <button class="ghost-button" data-c2-scenario="ddos" type="button">DDoS</button>
+                  <button class="ghost-button" data-c2-scenario="port_scan" type="button">Port Scan</button>
+                </div>
+                <button class="submit-button" type="submit">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 5h16v4H4V5Zm0 6h10v4H4v-4Zm0 6h16v2H4v-2Zm12-5 5 3-5 3v-6Z" />
+                  </svg>
+                  Run Prediction
+                </button>
+              </form>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Prediction output</p>
+                <h2>ML Decision Loop</h2>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" id="trainComponentTwoBtn" type="button">Train Models</button>
+                <button class="secondary-button" id="componentTwoPlatformBtn" type="button">Check Platform</button>
+              </div>
+              <pre id="componentTwoPredictionJson">{}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="runtime-panel compact-events" aria-label="Recent Component 1 events">
+          <div class="section-title">
+            <p class="eyebrow">Audit trail</p>
+            <h2>Recent Events</h2>
+          </div>
+          <div id="eventTimeline" class="timeline"></div>
         </section>
       </main>
     </div>

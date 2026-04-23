@@ -10,6 +10,7 @@ class Capacity:
     cpu_cores: float = 1.0
     mem_gb: float = 1.0
     bw_mbps: float = 1000.0
+    max_connections: int = 100
 
 
 @dataclass

@@ -12,15 +12,21 @@ export const resourceOptimization = {
     "sources/SDN_CLOUD_1-master/"
   ],
   routes: [
+    "GET /api/v1/component-1/status",
+    "POST /api/v1/component-1/route",
+    "POST /api/v1/component-1/backends/{name}/metrics",
+    "POST /api/v1/component-1/backends/{name}/health",
+    "POST /api/v1/component-1/workload/simulate",
     "GET /api/v1/backends",
     "POST /api/v1/resource-plans",
     "POST /api/v1/resource-plans/recompute"
   ],
   capabilities: [
-    "Backend health and weight visibility",
-    "RR per-flow selection",
-    "GA recomputation for longer-term optimization",
-    "VIP and backend capacity mapping"
+    "Real-time RR/SWRR routing and SDN flow-rule generation",
+    "GA recomputation for longer-term CPU, memory, bandwidth, and connection optimization",
+    "RR-vs-GA conflict resolution through health and overload gates",
+    "Fault tolerance through backend exclusion and fast redistribution",
+    "SLA compliance tracking for latency-sensitive cloud requests"
   ],
-  signals: ["backend_weights", "active_connections", "latency_ms", "throughput_mbps"]
+  signals: ["backend_weights", "active_connections", "latency_ms", "throughput_mbps", "sla_compliance"]
 };

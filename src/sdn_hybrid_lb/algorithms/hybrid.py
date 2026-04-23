@@ -39,6 +39,7 @@ class HybridLoadBalancer:
                         cpu_cores=float(cap.get("cpu_cores", 1.0)),
                         mem_gb=float(cap.get("mem_gb", 1.0)),
                         bw_mbps=float(cap.get("bw_mbps", 1000.0)),
+                        max_connections=int(cap.get("max_connections", 100)),
                     ),
                 )
             )
@@ -207,12 +208,10 @@ class HybridLoadBalancer:
         if m.bw_util is not None and m.bw_util >= thr.bw:
             return False
 
-        # active connections threshold normalized by max observed
-        max_conn = max((b.metrics.active_connections for b in self.backends), default=1)
-        if max_conn > 0:
-            conn_util = m.active_connections / max_conn
-            if conn_util >= thr.conn:
-                return False
+        max_conn = max(1, int(getattr(backend.capacity, "max_connections", 100) or 100))
+        conn_util = m.active_connections / max_conn
+        if conn_util >= thr.conn:
+            return False
 
         return True
 

@@ -144,15 +144,13 @@ class GeneticOptimizer:
         # Convert metrics into a single normalized utilization per backend.
         # Missing values become 0.0 (unknown -> treated as idle), which is conservative
         # for optimization but safe because overload gating is enforced elsewhere.
-        conns = [b.metrics.active_connections for b in backends]
-        max_conn = max(conns) if conns else 1
-
         u = []
         for b in backends:
             cpu = b.metrics.cpu_util if b.metrics.cpu_util is not None else 0.0
             mem = b.metrics.mem_util if b.metrics.mem_util is not None else 0.0
             bw = b.metrics.bw_util if b.metrics.bw_util is not None else 0.0
-            conn = (b.metrics.active_connections / max_conn) if max_conn > 0 else 0.0
+            max_conn = max(1, int(getattr(b.capacity, "max_connections", 100) or 100))
+            conn = b.metrics.active_connections / max_conn
             util = (
                 self.fit.w_cpu * cpu
                 + self.fit.w_mem * mem

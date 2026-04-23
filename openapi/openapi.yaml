@@ -24,6 +24,54 @@ paths:
   /api/v1/state:
     get:
       summary: Return integrated state snapshot
+  /api/v1/backends:
+    get:
+      summary: Return Component 1 backend inventory and runtime metrics
+  /api/v1/resource-plans/recompute:
+    post:
+      summary: Recompute Component 1 GA backend weights and publish a resource plan
+  /api/v1/component-1/status:
+    get:
+      summary: Component 1 hybrid load balancer runtime status
+  /api/v1/component-1/platform:
+    get:
+      summary: Report whether real Ryu, Mininet, and OpenStack tools are available locally
+  /api/v1/component-2/status:
+    get:
+      summary: Component 2 monitoring, visualization, ML prediction, and evaluation status
+  /api/v1/component-2/platform:
+    get:
+      summary: Report Prometheus, Grafana, and monitoring-platform readiness
+  /api/v1/component-2/telemetry:
+    post:
+      summary: Ingest telemetry, run ML prediction, and feed automatic SDN allocation
+  /api/v1/component-2/scenarios/{scenario_name}:
+    get:
+      summary: Return sample telemetry and prediction for normal, congestion, ddos, or port_scan
+  /api/v1/component-2/models/train:
+    post:
+      summary: Train Component 2 anomaly classifier and SLA-risk regressor
+  /api/v1/component-1/route:
+    post:
+      summary: Route a client request through RR/SWRR and install a simulated flow rule
+  /api/v1/component-1/flows:
+    get:
+      summary: Return recent Component 1 SDN flow-rule records
+  /api/v1/component-1/backends/{backend_name}/metrics:
+    post:
+      summary: Update backend CPU, memory, bandwidth, connection, latency, and throughput metrics
+  /api/v1/component-1/backends/{backend_name}/health:
+    post:
+      summary: Mark a backend healthy or unhealthy for fault-tolerant routing
+  /api/v1/component-1/port-stats:
+    post:
+      summary: Ingest switch port byte counters and derive bandwidth utilization
+  /api/v1/component-1/workload/simulate:
+    post:
+      summary: Run a reproducible Component 1 workload simulation
+  /api/v1/component-1/reset:
+    post:
+      summary: Reset Component 1 runtime demo state
   /api/intent/submit:
     post:
       summary: Component-3 compatible intent endpoint

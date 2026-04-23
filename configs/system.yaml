@@ -19,6 +19,7 @@ backends:
       cpu_cores: 2
       mem_gb: 4
       bw_mbps: 1000
+      max_connections: 150
   - name: "web-2"
     ip: "10.0.0.8"
     mac: "00:00:00:00:00:08"
@@ -28,6 +29,7 @@ backends:
       cpu_cores: 2
       mem_gb: 4
       bw_mbps: 1000
+      max_connections: 150
   - name: "app-1"
     ip: "10.0.0.12"
     mac: "00:00:00:00:00:12"
@@ -37,6 +39,7 @@ backends:
       cpu_cores: 4
       mem_gb: 8
       bw_mbps: 1000
+      max_connections: 250
   - name: "db-1"
     ip: "10.0.0.14"
     mac: "00:00:00:00:00:14"
@@ -46,6 +49,7 @@ backends:
       cpu_cores: 4
       mem_gb: 8
       bw_mbps: 1000
+      max_connections: 250
 
 clients:
   - name: "client1"

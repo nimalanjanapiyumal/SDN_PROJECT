@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from adaptive_cloud_platform.app import FRONTEND_DIR, favicon, frontend
+from adaptive_cloud_platform.app import FRONTEND_DIR, component_one_platform, favicon, frontend
 
 
 def test_frontend_assets_exist():
@@ -8,7 +8,7 @@ def test_frontend_assets_exist():
     icon = FRONTEND_DIR / "favicon.svg"
     assert index.exists()
     assert icon.exists()
-    assert "Adaptive Cloud SDN Console" in index.read_text(encoding="utf-8")
+    assert "Component 1 Hybrid Load Balancing Console" in index.read_text(encoding="utf-8")
 
 
 def test_favicon_route_exists():
@@ -19,3 +19,9 @@ def test_favicon_route_exists():
 def test_frontend_route_points_to_index():
     response = frontend()
     assert Path(response.path) == FRONTEND_DIR / "index.html"
+
+
+def test_component_one_platform_reports_backend_mode():
+    platform = component_one_platform()
+    assert platform["integrated_backend_mode"] == "fastapi_simulated_flow_manager"
+    assert "component_1_ryu_controller" in platform["source_integrations"]
