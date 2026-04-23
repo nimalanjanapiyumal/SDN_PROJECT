@@ -9,8 +9,8 @@ This ZIP contains a completed Linux-oriented integrated development package buil
 - **Component 1 operations console** for request routing, backend metrics, health/fault simulation, GA recompute, SLA tracking, and SDN flow-rule records.
 - **Monitoring, Prometheus, Grafana, and ML policy integration** adapted from Component 2.
 - **Component 2 runtime console/API** for telemetry ingestion, ML prediction, model training, Prometheus/Grafana readiness, mitigation latency, and automatic policy feedback.
-- **Intent-based controller compatibility layer** aligned with Component 3 REST paths.
-- **Continuous authentication, micro-segmentation, and CTI integration services** adapted from Component 4.
+- **Context-aware intent controller runtime** adapted from Component 3 with natural-language intent translation, DFPS priority scoring, adaptive OpenFlow-compatible rule generation, and team REST APIs.
+- **Adaptive security enforcement runtime** adapted from Component 4 with continuous authentication, micro-segmentation, CTI/Suricata-style alert blocking, and OpenFlow-compatible rule records.
 - **Linux deployment assets**: `docker-compose.yml`, `scripts/*.sh`, `deploy/systemd/*.service`, and a release packaging script.
 - **Preserved original source drops** under `sources/` for traceability.
 
@@ -37,6 +37,25 @@ Open the integrated frontend at:
 http://127.0.0.1:8080/
 ```
 
+Use the top console buttons for production-style operation:
+
+- **Run Integrated** calls `POST /api/v1/integrated/run` and automatically chains Component 2 telemetry, Component 3 intent/context adaptation, Component 1 workload allocation, and Component 4 security enforcement.
+- **Validate Stack** calls `GET /api/v1/platform/validate` and reports Prometheus, Grafana, Ryu, Mininet, OVS, Suricata, and runbook readiness.
+
+Start the observability stack when Docker is available:
+
+```bash
+docker compose up -d prometheus grafana
+```
+
+Prometheus opens at `http://127.0.0.1:9090`, Grafana opens at `http://127.0.0.1:3000`, and the API exporter is available at `http://127.0.0.1:9108/metrics`.
+
+Run the real SDN lab from Ubuntu/WSL/Linux after installing Ryu, Mininet, Open vSwitch, and iperf3:
+
+```bash
+bash scripts/run_integrated_sdn_lab.sh mixed 90
+```
+
 ## Component 1 runtime functions
 
 - `GET /api/v1/component-1/status` - full Component 1 runtime status, SLA, flow rules, events, weights, and backend pool.
@@ -54,6 +73,33 @@ http://127.0.0.1:8080/
 - `POST /api/v1/component-2/telemetry` - ingest live telemetry, run ML prediction, and trigger automatic allocation feedback.
 - `GET /api/v1/component-2/scenarios/{scenario_name}` - preview normal, congestion, ddos, or port_scan telemetry scenarios.
 - `POST /api/v1/component-2/models/train` - train the anomaly classifier and SLA-risk regressor.
+
+## Component 3 runtime functions
+
+- `GET /api/v1/component-3/status` - intent translation, context adaptation, generated rules, metrics, and host status.
+- `POST /api/v1/component-3/intents` - classify a high-level natural-language intent and generate OpenFlow-compatible rules.
+- `POST /api/v1/component-3/context` - update threat, congestion, load, latency, resource, temporal, and policy context, then re-optimize active rules.
+- `GET /api/v1/component-3/rules` - inspect generated and active Component 3 flow-rule records.
+- `GET /api/v1/component-3/hosts` - view the simulated multi-tier cloud host inventory.
+- `GET /api/v1/component-3/scenarios/{scenario_name}` - preview video, security, load, or multi-intent scenarios.
+- `POST /api/v1/component-3/benchmark` - measure intent translation latency across repeated scenario submissions.
+
+## Component 4 runtime functions
+
+- `GET /api/v1/component-4/status` - security status for continuous auth, segmentation, CTI indicators, rules, and benchmark metrics.
+- `POST /api/v1/component-4/auth/login` - create a continuous-auth session.
+- `POST /api/v1/component-4/auth/verify` - verify each request, score anomalies, and quarantine high-risk sessions.
+- `POST /api/v1/component-4/segmentation/enforce` - generate Zero Trust micro-segmentation ACL rules.
+- `POST /api/v1/component-4/segmentation/evaluate` - evaluate a flow and quarantine lateral movement attempts.
+- `POST /api/v1/component-4/cti/fetch` - ingest simulated TAXII/STIX indicators.
+- `POST /api/v1/component-4/cti/alert` - process Suricata-style alerts and block matching IoCs.
+- `GET /api/v1/component-4/rules` - inspect active security enforcement rule records.
+
+## Integrated runtime functions
+
+- `GET /api/v1/integrated/status` - combined Component 1-4 health, readiness, latest decision, and autonomous run history.
+- `POST /api/v1/integrated/run` - automatic scenario run across monitoring, intent adaptation, resource allocation, and security enforcement.
+- `GET /api/v1/platform/validate` - local validation for Prometheus/Grafana files, Docker, exporter probes, Ryu, Mininet, OVS, Suricata, and WSL status.
 
 ## Main directories
 

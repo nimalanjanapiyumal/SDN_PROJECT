@@ -24,6 +24,15 @@ paths:
   /api/v1/state:
     get:
       summary: Return integrated state snapshot
+  /api/v1/integrated/status:
+    get:
+      summary: Return combined Component 1-4 operator health, readiness, latest decision, and autonomous run history
+  /api/v1/integrated/run:
+    post:
+      summary: Run the automatic combined model across monitoring, intent processing, resource allocation, and security enforcement
+  /api/v1/platform/validate:
+    get:
+      summary: Validate Prometheus, Grafana, Ryu, Mininet, OVS, Suricata, and local configuration readiness
   /api/v1/backends:
     get:
       summary: Return Component 1 backend inventory and runtime metrics
@@ -51,6 +60,79 @@ paths:
   /api/v1/component-2/models/train:
     post:
       summary: Train Component 2 anomaly classifier and SLA-risk regressor
+  /api/v1/component-3/status:
+    get:
+      summary: Component 3 context-aware intent translation, rule, and benchmark status
+  /api/v1/component-3/platform:
+    get:
+      summary: Report Ryu, Mininet, OpenFlow, and source-controller readiness for Component 3
+  /api/v1/component-3/hosts:
+    get:
+      summary: Return cloud SDN host inventory grouped by web, application, and database tiers
+  /api/v1/component-3/intents:
+    post:
+      summary: Submit a natural-language intent, classify it, generate OpenFlow-compatible rules, and feed the integrated policy loop
+  /api/v1/component-3/context:
+    post:
+      summary: Submit multi-dimensional context and re-optimize active intent-derived flow rules
+  /api/v1/component-3/rules:
+    get:
+      summary: Return generated and active Component 3 OpenFlow-compatible rules
+  /api/v1/component-3/scenarios/{scenario_name}:
+    get:
+      summary: Return Component 3 video, security, load, or multi-intent scenario payloads
+  /api/v1/component-3/benchmark:
+    post:
+      summary: Run Component 3 intent translation benchmark iterations
+  /api/v1/component-4/status:
+    get:
+      summary: Component 4 adaptive security status for auth, segmentation, CTI, and enforcement
+  /api/v1/component-4/platform:
+    get:
+      summary: Report Ryu, Mininet, OVS, and Suricata readiness for Component 4
+  /api/v1/component-4/auth/login:
+    post:
+      summary: Create a continuous authentication session
+  /api/v1/component-4/auth/verify:
+    post:
+      summary: Verify a session request, score anomalies, and trigger quarantine when needed
+  /api/v1/component-4/auth/sessions:
+    get:
+      summary: Return active, suspicious, and quarantined continuous-auth sessions
+  /api/v1/component-4/segmentation/policies:
+    get:
+      summary: Return Zero Trust micro-segmentation policies
+    post:
+      summary: Add a micro-segmentation allow policy
+  /api/v1/component-4/segmentation/enforce:
+    post:
+      summary: Generate OpenFlow-compatible micro-segmentation ACL rules
+  /api/v1/component-4/segmentation/evaluate:
+    post:
+      summary: Evaluate a flow against segmentation policies and quarantine blocked lateral traffic
+  /api/v1/component-4/cti/indicators:
+    get:
+      summary: Return CTI indicators and block status
+    post:
+      summary: Add a CTI indicator
+  /api/v1/component-4/cti/fetch:
+    post:
+      summary: Fetch simulated TAXII/STIX threat intelligence indicators
+  /api/v1/component-4/cti/block:
+    post:
+      summary: Block a CTI indicator through the integrated SDN security policy loop
+  /api/v1/component-4/cti/alert:
+    post:
+      summary: Process a Suricata-style alert and trigger automatic CTI blocking
+  /api/v1/component-4/rules:
+    get:
+      summary: Return generated and active Component 4 security rule records
+  /api/v1/component-4/scenarios/{scenario_name}:
+    get:
+      summary: Return DDoS, spoofing, insider, port-scan, or malware security scenarios
+  /api/v1/component-4/reset:
+    post:
+      summary: Reset Component 4 runtime demo state
   /api/v1/component-1/route:
     post:
       summary: Route a client request through RR/SWRR and install a simulated flow rule

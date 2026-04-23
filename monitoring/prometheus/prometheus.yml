@@ -5,3 +5,11 @@ scrape_configs:
   - job_name: adaptive-cloud-api
     static_configs:
       - targets: ['integrated-api:9108']
+
+  - job_name: adaptive-cloud-local
+    static_configs:
+      - targets: ['host.docker.internal:9108']
+
+  - job_name: adaptive-ryu-controller
+    static_configs:
+      - targets: ['host.docker.internal:9101']

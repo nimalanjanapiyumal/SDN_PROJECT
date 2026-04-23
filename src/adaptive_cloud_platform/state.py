@@ -14,9 +14,13 @@ class IntegratedState:
     decisions: List[Dict[str, Any]] = field(default_factory=list)
     active_policies: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     hosts: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        '10.0.0.1': {'switch': 's4', 'tier': 'web'},
-        '10.0.0.7': {'switch': 's5', 'tier': 'app'},
-        '10.0.0.12': {'switch': 's6', 'tier': 'db'},
+        '10.0.0.1': {'switch': 's4', 'tier': 'web', 'role': 'web-1'},
+        '10.0.0.2': {'switch': 's4', 'tier': 'web', 'role': 'web-2'},
+        '10.0.0.3': {'switch': 's4', 'tier': 'web', 'role': 'web-3'},
+        '10.0.0.7': {'switch': 's5', 'tier': 'app', 'role': 'app-1'},
+        '10.0.0.8': {'switch': 's5', 'tier': 'app', 'role': 'app-2'},
+        '10.0.0.12': {'switch': 's6', 'tier': 'db', 'role': 'db-1'},
+        '10.0.0.13': {'switch': 's6', 'tier': 'db', 'role': 'db-2'},
     })
     created_at: float = field(default_factory=time.time)
 

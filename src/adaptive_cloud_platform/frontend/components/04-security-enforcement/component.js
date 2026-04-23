@@ -12,6 +12,14 @@ export const securityEnforcement = {
     "sources/SDN-Security--main/"
   ],
   routes: [
+    "GET /api/v1/component-4/status",
+    "POST /api/v1/component-4/auth/login",
+    "POST /api/v1/component-4/auth/verify",
+    "POST /api/v1/component-4/segmentation/enforce",
+    "POST /api/v1/component-4/segmentation/evaluate",
+    "POST /api/v1/component-4/cti/fetch",
+    "POST /api/v1/component-4/cti/alert",
+    "GET /api/v1/component-4/rules",
     "POST /api/v1/security-actions",
     "POST /api/v1/policy/enforce",
     "POST /sdn/block",
@@ -19,10 +27,12 @@ export const securityEnforcement = {
     "POST /sdn/release"
   ],
   capabilities: [
+    "Continuous authentication anomaly scoring",
+    "Zero Trust micro-segmentation ACLs",
+    "Dynamic CTI and Suricata-style blocking",
     "Block, quarantine, release, and allow actions",
     "Security-first priority in the decision spine",
-    "CTI subject tracking",
-    "Zero Trust segmentation workflow hooks"
+    "OpenFlow-compatible security rule records"
   ],
-  signals: ["action", "subject", "severity", "reason"]
+  signals: ["anomaly_score", "src_ip", "dst_ip", "ioc", "severity", "mitigation_latency_ms"]
 };

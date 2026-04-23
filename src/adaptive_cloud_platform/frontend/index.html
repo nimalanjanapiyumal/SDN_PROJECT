@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Component 1 Hybrid Load Balancing Console</title>
+    <title>Adaptive Cloud SDN Integrated Console</title>
     <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/frontend/assets/css/styles.css" />
   </head>
@@ -19,7 +19,7 @@
           </span>
           <span>
             <strong>Adaptive SDN</strong>
-            <small>Component 1 Console</small>
+            <small>Integrated Console</small>
           </span>
         </div>
 
@@ -41,11 +41,30 @@
       <main class="main">
         <header class="topbar hero-header">
           <div>
-            <p class="eyebrow">Component 1 | Hybrid Load Balancing Algorithm</p>
-            <h1>SDN-Based Cloud Resource Allocation</h1>
-            <p class="headline-copy">Round Robin handles real-time forwarding while Genetic Algorithm planning continuously improves CPU, memory, bandwidth, and SLA balance.</p>
+            <p class="eyebrow">Autonomous SDN cloud operations</p>
+            <h1>Adaptive SDN Operations</h1>
+            <p class="headline-copy">Resource allocation, ML telemetry, intent rules, and Zero Trust enforcement connected as one control loop.</p>
           </div>
           <div class="topbar-actions">
+            <select class="scenario-select" id="integratedScenario" aria-label="Integrated scenario">
+              <option value="mixed">Mixed</option>
+              <option value="normal">Normal</option>
+              <option value="congestion">Congestion</option>
+              <option value="ddos">DDoS</option>
+              <option value="port_scan">Port Scan</option>
+            </select>
+            <button class="secondary-button" id="runIntegratedBtn" type="button">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M8 5v14l11-7L8 5Z" />
+              </svg>
+              Run Integrated
+            </button>
+            <button class="secondary-button subtle" id="validatePlatformBtn" type="button">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm-1 13.5-3-3 1.4-1.4 1.6 1.6 4.6-4.6L17 9.5l-6 6Z" />
+              </svg>
+              Validate Stack
+            </button>
             <label class="toggle">
               <input id="autoRefresh" type="checkbox" checked />
               <span></span>
@@ -58,7 +77,34 @@
           </div>
         </header>
 
-        <section class="kpi-grid" aria-label="Component 1 runtime metrics">
+        <section class="integration-strip" aria-label="Integrated operations">
+          <article class="ops-card">
+            <span>Model</span>
+            <strong id="combinedHealth">Ready</strong>
+            <em>4 components connected</em>
+          </article>
+          <article class="ops-card">
+            <span>Runs</span>
+            <strong id="combinedRuns">0</strong>
+            <em id="combinedLatency">latency pending</em>
+          </article>
+          <article class="ops-card">
+            <span>Observability</span>
+            <strong id="monitoringReady">Files</strong>
+            <em>Prometheus and Grafana</em>
+          </article>
+          <article class="ops-card">
+            <span>SDN Lab</span>
+            <strong id="sdnReady">Record</strong>
+            <em>Ryu and Mininet bridge</em>
+          </article>
+          <details class="run-output">
+            <summary>Latest Integrated Output</summary>
+            <pre id="integratedRunJson">{}</pre>
+          </details>
+        </section>
+
+        <section class="kpi-grid" data-workspace="component-1" aria-label="Component 1 runtime metrics">
           <article class="kpi-card primary">
             <span>RR Decisions</span>
             <strong id="rrDecisionCount">0</strong>
@@ -86,7 +132,7 @@
           </article>
         </section>
 
-        <section class="hero-grid" aria-label="Hybrid load-balancing operations">
+        <section class="hero-grid" data-workspace="component-1" aria-label="Hybrid load-balancing operations">
           <div class="operations-board">
             <div class="board-header">
               <div>
@@ -154,7 +200,7 @@
           </aside>
         </section>
 
-        <section class="workspace-grid" aria-label="Component 1 control workspace">
+        <section class="workspace-grid" data-workspace="component-1" aria-label="Component 1 control workspace">
           <div class="component-panel" id="componentPanel"></div>
 
           <div class="forms-panel">
@@ -255,7 +301,7 @@
           </div>
         </section>
 
-        <section class="lower-grid" aria-label="Component 1 runtime details">
+        <section class="lower-grid" data-workspace="component-1" aria-label="Component 1 runtime details">
           <div class="runtime-panel">
             <div class="section-title">
               <p class="eyebrow">Resource pool</p>
@@ -273,7 +319,7 @@
           </div>
         </section>
 
-        <section class="api-matrix" aria-label="Component API matrix">
+        <section class="api-matrix" data-workspace="component-1" aria-label="Component API matrix">
           <div class="section-title">
             <p class="eyebrow">Implementation map</p>
             <h2>Component 1 Feature Coverage</h2>
@@ -281,7 +327,7 @@
           <div id="apiMatrix" class="matrix-grid"></div>
         </section>
 
-        <section class="component-two-section" aria-label="Component 2 monitoring and ML workspace">
+        <section class="component-two-section" data-workspace="component-2" aria-label="Component 2 monitoring and ML workspace">
           <div class="section-title">
             <p class="eyebrow">Component 2</p>
             <h2>Monitoring, Visualization, and ML Intelligence</h2>
@@ -384,7 +430,361 @@
           </div>
         </section>
 
-        <section class="runtime-panel compact-events" aria-label="Recent Component 1 events">
+        <section class="component-three-section" data-workspace="component-3" aria-label="Component 3 intent controller workspace">
+          <div class="section-title">
+            <p class="eyebrow">Component 3</p>
+            <h2>Context-Aware Intent-Based Flow Programming</h2>
+          </div>
+
+          <div class="component-three-grid">
+            <article class="kpi-card">
+              <span>Intents</span>
+              <strong id="c3IntentCount">0</strong>
+              <em>translated</em>
+            </article>
+            <article class="kpi-card">
+              <span>Rules</span>
+              <strong id="c3RuleCount">0</strong>
+              <em>OpenFlow-compatible</em>
+            </article>
+            <article class="kpi-card">
+              <span>Latency</span>
+              <strong id="c3AvgLatency">0 ms</strong>
+              <em>average translation</em>
+            </article>
+            <article class="kpi-card">
+              <span>Context</span>
+              <strong id="c3ContextScore">0%</strong>
+              <em>DFPS signal</em>
+            </article>
+          </div>
+
+          <div class="component-three-layout">
+            <div class="intent-cycle" aria-label="Intent-based controller cycle">
+              <div class="cycle-node cycle-intent">Intent</div>
+              <div class="cycle-node cycle-translation">Translation</div>
+              <div class="cycle-node cycle-activation">Activation</div>
+              <div class="cycle-node cycle-ai">AI</div>
+              <div class="cycle-node cycle-assurance">Assurance</div>
+              <div class="cycle-node cycle-infra">Physical and Virtual Infrastructure</div>
+              <span class="cycle-link l1"></span>
+              <span class="cycle-link l2"></span>
+              <span class="cycle-link l3"></span>
+              <span class="cycle-link l4"></span>
+              <span class="cycle-link l5"></span>
+            </div>
+
+            <div class="forms-panel">
+              <div class="section-title">
+                <p class="eyebrow">Intent input</p>
+                <h2>Translate Intent to Rules</h2>
+              </div>
+              <form class="component-three-form" id="componentThreeIntentForm">
+                <label class="wide">
+                  Intent
+                  <textarea id="c3IntentText" rows="3">Prioritize video streaming during peak hours</textarea>
+                </label>
+                <label>
+                  Priority
+                  <input id="c3Priority" type="number" min="1" max="10" value="8" />
+                </label>
+                <label>
+                  Expected Type
+                  <select id="c3ExpectedType">
+                    <option value="">Auto</option>
+                    <option value="qos">qos</option>
+                    <option value="security">security</option>
+                    <option value="load_balance">load_balance</option>
+                    <option value="monitor">monitor</option>
+                  </select>
+                </label>
+                <label>
+                  Source IP
+                  <input id="c3SrcIp" type="text" value="10.0.0.1" />
+                </label>
+                <label>
+                  Destination IP
+                  <input id="c3DstIp" type="text" value="10.0.0.7" />
+                </label>
+                <label>
+                  Protocol
+                  <select id="c3Proto">
+                    <option value="tcp">tcp</option>
+                    <option value="udp">udp</option>
+                  </select>
+                </label>
+                <label>
+                  Port
+                  <input id="c3DstPort" type="number" min="1" max="65535" value="443" />
+                </label>
+                <div class="scenario-row">
+                  <button class="ghost-button" data-c3-scenario="video" type="button">Video</button>
+                  <button class="ghost-button" data-c3-scenario="security" type="button">Security</button>
+                  <button class="ghost-button" data-c3-scenario="load" type="button">Load</button>
+                  <button class="ghost-button" data-c3-scenario="multi" type="button">Multi</button>
+                </div>
+                <button class="submit-button" type="submit">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 4h10v2H6v12h12v-8h2v10H4V4Zm11 0h5v5h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H15V4Z" />
+                  </svg>
+                  Generate Rules
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="workspace-grid">
+            <div class="forms-panel">
+              <div class="section-title">
+                <p class="eyebrow">Context update</p>
+                <h2>Adaptive Re-Optimization</h2>
+              </div>
+              <form class="component-three-form" id="componentThreeContextForm">
+                <label>
+                  Threat
+                  <select id="c3Threat">
+                    <option value="low">low</option>
+                    <option value="elevated">elevated</option>
+                    <option value="high">high</option>
+                    <option value="critical">critical</option>
+                  </select>
+                </label>
+                <label>
+                  Congestion
+                  <select id="c3Congestion">
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="severe">severe</option>
+                  </select>
+                </label>
+                <label>
+                  Load
+                  <select id="c3Load">
+                    <option value="normal">normal</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="overloaded">overloaded</option>
+                  </select>
+                </label>
+                <label>
+                  Latency ms
+                  <input id="c3Latency" type="number" min="0" value="95" />
+                </label>
+                <label>
+                  Bandwidth Utilization
+                  <input id="c3Bandwidth" type="number" min="0" max="1" step="0.01" value="0.62" />
+                </label>
+                <label>
+                  Resource Utilization
+                  <input id="c3Resource" type="number" min="0" max="1" step="0.01" value="0.58" />
+                </label>
+                <label>
+                  Time Context
+                  <select id="c3TimeContext">
+                    <option value="business_hours">business_hours</option>
+                    <option value="peak_hours">peak_hours</option>
+                    <option value="maintenance_window">maintenance_window</option>
+                    <option value="off_hours">off_hours</option>
+                  </select>
+                </label>
+                <label>
+                  Policy Context
+                  <select id="c3PolicyContext">
+                    <option value="standard">standard</option>
+                    <option value="sla">sla</option>
+                    <option value="security">security</option>
+                    <option value="strict">strict</option>
+                  </select>
+                </label>
+                <button class="submit-button" type="submit">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.8-2.4 6.6-6 7.8-3.6-1.2-6-4-6-7.8V7.2l6-3Z" />
+                  </svg>
+                  Update Context
+                </button>
+              </form>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Controller output</p>
+                <h2>Generated Rules and Host Context</h2>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" id="componentThreePlatformBtn" type="button">Check Platform</button>
+                <button class="secondary-button" id="componentThreeHostsBtn" type="button">Hosts</button>
+              </div>
+              <pre id="componentThreeOutputJson">{}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="component-four-section" data-workspace="component-4" aria-label="Component 4 adaptive security workspace">
+          <div class="section-title">
+            <p class="eyebrow">Component 4</p>
+            <h2>Adaptive Security Enforcement Framework</h2>
+          </div>
+
+          <div class="component-four-grid">
+            <article class="kpi-card">
+              <span>Sessions</span>
+              <strong id="c4SessionCount">0</strong>
+              <em id="c4SessionRisk">0 suspicious</em>
+            </article>
+            <article class="kpi-card">
+              <span>Quarantined</span>
+              <strong id="c4QuarantineCount">0</strong>
+              <em>continuous auth</em>
+            </article>
+            <article class="kpi-card">
+              <span>Blocked IoCs</span>
+              <strong id="c4BlockedIocCount">0</strong>
+              <em>CTI enforcement</em>
+            </article>
+            <article class="kpi-card">
+              <span>Rules</span>
+              <strong id="c4RuleCount">0</strong>
+              <em id="c4MitigationLatency">latency pending</em>
+            </article>
+          </div>
+
+          <div class="component-four-layout">
+            <div class="security-map" aria-label="SDN security framework overview">
+              <div class="security-node security-users">Users / Devices</div>
+              <div class="security-node security-auth">Continuous Authentication</div>
+              <div class="security-node security-seg">Micro-Segmentation Policies</div>
+              <div class="security-node security-ids">IDS / IPS Suricata</div>
+              <div class="security-node security-cti">Threat Intelligence Feeds</div>
+              <div class="security-node security-controller">SDN Controller Ryu</div>
+              <div class="security-node security-workloads">Cloud Workloads / VMs</div>
+              <span class="security-link s1"></span>
+              <span class="security-link s2"></span>
+              <span class="security-link s3"></span>
+              <span class="security-link s4"></span>
+              <span class="security-link s5"></span>
+              <span class="security-link s6"></span>
+            </div>
+
+            <div class="forms-panel">
+              <div class="section-title">
+                <p class="eyebrow">Continuous authentication</p>
+                <h2>Session Risk Controls</h2>
+              </div>
+              <form class="component-four-form" id="componentFourAuthForm">
+                <label>
+                  User
+                  <input id="c4UserId" type="text" value="admin" />
+                </label>
+                <label>
+                  Login IP
+                  <input id="c4LoginIp" type="text" value="10.0.0.2" />
+                </label>
+                <label>
+                  Password
+                  <input id="c4Password" type="password" value="admin123" />
+                </label>
+                <label>
+                  Verify IP
+                  <input id="c4VerifyIp" type="text" value="10.0.0.2" />
+                </label>
+                <label class="wide">
+                  Session Token
+                  <input id="c4Token" type="text" value="" />
+                </label>
+                <label>
+                  Bytes Sent
+                  <input id="c4BytesSent" type="number" min="0" value="2048" />
+                </label>
+                <button class="ghost-button" id="componentFourLoginBtn" type="button">Login</button>
+                <button class="submit-button" type="submit">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.8-2.4 6.6-6 7.8-3.6-1.2-6-4-6-7.8V7.2l6-3Z" />
+                  </svg>
+                  Verify Request
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="workspace-grid">
+            <div class="forms-panel">
+              <div class="section-title">
+                <p class="eyebrow">Zero Trust controls</p>
+                <h2>Segmentation and Threat Intel</h2>
+              </div>
+              <form class="component-four-form" id="componentFourSecurityForm">
+                <label>
+                  Source IP
+                  <input id="c4SrcIp" type="text" value="10.0.0.1" />
+                </label>
+                <label>
+                  Destination IP
+                  <input id="c4DstIp" type="text" value="10.0.0.12" />
+                </label>
+                <label>
+                  Port
+                  <input id="c4Port" type="number" min="1" max="65535" value="3306" />
+                </label>
+                <label>
+                  Protocol
+                  <select id="c4Protocol">
+                    <option value="tcp">tcp</option>
+                    <option value="udp">udp</option>
+                  </select>
+                </label>
+                <label>
+                  CTI Indicator
+                  <input id="c4Indicator" type="text" value="91.108.4.1" />
+                </label>
+                <label>
+                  Alert Severity
+                  <select id="c4Severity">
+                    <option value="1">critical</option>
+                    <option value="2">high</option>
+                    <option value="3">medium</option>
+                    <option value="4">low</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  Alert Signature
+                  <input id="c4Signature" type="text" value="SURICATA DDoS source detected" />
+                </label>
+                <div class="scenario-row">
+                  <button class="ghost-button" data-c4-scenario="ddos" type="button">DDoS</button>
+                  <button class="ghost-button" data-c4-scenario="spoofing" type="button">Spoofing</button>
+                  <button class="ghost-button" data-c4-scenario="insider" type="button">Insider</button>
+                  <button class="ghost-button" data-c4-scenario="port_scan" type="button">Port Scan</button>
+                </div>
+                <div class="security-action-row">
+                  <button class="ghost-button" id="componentFourEnforceSegBtn" type="button">Enforce Segmentation</button>
+                  <button class="ghost-button" id="componentFourFetchCtiBtn" type="button">Fetch CTI</button>
+                  <button class="ghost-button" id="componentFourBlockIocBtn" type="button">Block IoC</button>
+                </div>
+                <button class="submit-button" type="submit">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 4h16v4H4V4Zm0 6h10v4H4v-4Zm0 6h16v4H4v-4Zm13-6 4 3-4 3v-6Z" />
+                  </svg>
+                  Evaluate Flow and Alert
+                </button>
+              </form>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Security output</p>
+                <h2>Rules, IoCs, and Enforcement</h2>
+              </div>
+              <div class="button-row">
+                <button class="secondary-button" id="componentFourPlatformBtn" type="button">Check Platform</button>
+                <button class="secondary-button" id="componentFourRulesBtn" type="button">Rules</button>
+              </div>
+              <pre id="componentFourOutputJson">{}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="runtime-panel compact-events" data-workspace="component-1" aria-label="Recent Component 1 events">
           <div class="section-title">
             <p class="eyebrow">Audit trail</p>
             <h2>Recent Events</h2>

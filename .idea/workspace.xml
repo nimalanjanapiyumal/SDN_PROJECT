@@ -4,10 +4,24 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init2">
+    <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init3">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/monitoring/grafana/dashboards/overview.json" beforeDir="false" afterPath="$PROJECT_DIR$/monitoring/grafana/dashboards/overview.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/monitoring/prometheus/prometheus.yml" beforeDir="false" afterPath="$PROJECT_DIR$/monitoring/prometheus/prometheus.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/openapi/openapi.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/openapi/openapi.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/css/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/css/styles.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/js/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/js/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/03-intent-controller/component.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/03-intent-controller/component.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/04-security-enforcement/component.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/04-security-enforcement/component.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/services/security_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/services/security_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_contracts.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_contracts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_frontend_routes.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_frontend_routes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_security_policy.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_security_policy.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,12 +97,21 @@
       <option name="project" value="LOCAL" />
       <updated>1776891741143</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="init3">
+      <option name="closed" value="true" />
+      <created>1776950855312</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1776950855312</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="init" />
     <MESSAGE value="init2" />
-    <option name="LAST_COMMIT_MESSAGE" value="init2" />
+    <MESSAGE value="init3" />
+    <option name="LAST_COMMIT_MESSAGE" value="init3" />
   </component>
 </project>

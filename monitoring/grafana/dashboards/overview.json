@@ -1,63 +1,101 @@
 {
   "id": null,
-  "title": "Adaptive Cloud SDN - Component 2 Monitoring and ML",
+  "title": "Adaptive Cloud SDN - Integrated Operations",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "5s",
+  "tags": ["sdn", "cloud", "adaptive", "components-1-4"],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "stat",
-      "title": "Integrated Decisions",
+      "title": "Autonomous Runs",
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(adaptive_integrated_runs_total)"}]
+    },
+    {
+      "type": "stat",
+      "title": "Integrated Decisions",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
       "targets": [{"expr": "adaptive_decisions_total"}]
     },
     {
       "type": "stat",
-      "title": "ML Predictions",
-      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-      "targets": [{"expr": "sum(adaptive_component2_predictions_total)"}]
-    },
-    {
-      "type": "stat",
-      "title": "Policy Feedback",
+      "title": "Component 1 Routes",
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-      "targets": [{"expr": "adaptive_component2_policy_feedback_total"}]
+      "targets": [{"expr": "adaptive_component1_routes_total"}]
     },
     {
       "type": "stat",
-      "title": "Security Actions",
+      "title": "Component 4 Active Rules",
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-      "targets": [{"expr": "adaptive_security_actions_total"}]
+      "targets": [{"expr": "adaptive_component4_active_rules"}]
     },
     {
       "type": "timeseries",
-      "title": "Prediction Confidence",
+      "title": "Integrated Run Latency",
       "gridPos": {"h": 7, "w": 12, "x": 0, "y": 4},
-      "targets": [{"expr": "adaptive_component2_prediction_confidence"}]
+      "targets": [{"expr": "adaptive_integrated_run_latency_ms"}]
     },
     {
       "type": "timeseries",
-      "title": "SLA Risk Score",
+      "title": "SLA Risk and ML Confidence",
       "gridPos": {"h": 7, "w": 12, "x": 12, "y": 4},
-      "targets": [{"expr": "adaptive_component2_sla_risk_score"}]
+      "targets": [
+        {"expr": "adaptive_component2_sla_risk_score", "legendFormat": "SLA risk"},
+        {"expr": "adaptive_component2_prediction_confidence", "legendFormat": "ML confidence"}
+      ]
     },
     {
       "type": "bargauge",
-      "title": "Prediction Classes",
-      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 11},
+      "title": "Component 2 Prediction Classes",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 11},
       "targets": [{"expr": "sum by (label) (adaptive_component2_predictions_total)"}]
     },
     {
       "type": "stat",
-      "title": "Component 1 GA Recomputation",
-      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 11},
+      "title": "Component 1 GA Recomputes",
+      "gridPos": {"h": 6, "w": 4, "x": 8, "y": 11},
       "targets": [{"expr": "adaptive_component1_ga_recomputes_total"}]
     },
     {
+      "type": "timeseries",
+      "title": "Component 3 Context and Translation",
+      "gridPos": {"h": 6, "w": 8, "x": 12, "y": 11},
+      "targets": [
+        {"expr": "adaptive_component3_context_score", "legendFormat": "Context score"},
+        {"expr": "adaptive_component3_translation_latency_ms", "legendFormat": "Translation ms"}
+      ]
+    },
+    {
       "type": "stat",
-      "title": "Component 1 Routes",
-      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 11},
-      "targets": [{"expr": "adaptive_component1_routes_total"}]
+      "title": "Component 3 Active Rules",
+      "gridPos": {"h": 6, "w": 4, "x": 20, "y": 11},
+      "targets": [{"expr": "adaptive_component3_active_rules"}]
+    },
+    {
+      "type": "bargauge",
+      "title": "Component 3 Intent Types",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 17},
+      "targets": [{"expr": "sum by (intent_type) (adaptive_component3_intents_total)"}]
+    },
+    {
+      "type": "bargauge",
+      "title": "Component 4 Security Actions",
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 17},
+      "targets": [{"expr": "sum by (action) (adaptive_component4_security_rules_total)"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Component 4 Risk and Mitigation",
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 17},
+      "targets": [
+        {"expr": "adaptive_component4_latest_risk_score", "legendFormat": "Auth risk"},
+        {"expr": "adaptive_component4_mitigation_latency_ms", "legendFormat": "Mitigation ms"}
+      ]
     }
   ]
 }

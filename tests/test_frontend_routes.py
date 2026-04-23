@@ -8,7 +8,7 @@ def test_frontend_assets_exist():
     icon = FRONTEND_DIR / "favicon.svg"
     assert index.exists()
     assert icon.exists()
-    assert "Component 1 Hybrid Load Balancing Console" in index.read_text(encoding="utf-8")
+    assert "Adaptive Cloud SDN Integrated Console" in index.read_text(encoding="utf-8")
 
 
 def test_favicon_route_exists():

@@ -5,6 +5,12 @@ const state = {
   snapshot: null,
   componentOne: null,
   componentTwo: null,
+  componentThree: null,
+  componentFour: null,
+  integrated: null,
+  latestIntegratedRun: null,
+  platformValidation: null,
+  integratedRunCount: 0,
   health: null,
   autoRefresh: true,
   timer: null
@@ -31,6 +37,15 @@ function cacheElements() {
     "apiStatus",
     "refreshBtn",
     "autoRefresh",
+    "integratedScenario",
+    "runIntegratedBtn",
+    "validatePlatformBtn",
+    "combinedHealth",
+    "combinedRuns",
+    "combinedLatency",
+    "monitoringReady",
+    "sdnReady",
+    "integratedRunJson",
     "recomputeBtn",
     "routeRequestBtn",
     "componentNav",
@@ -67,7 +82,31 @@ function cacheElements() {
     "componentTwoTelemetryForm",
     "componentTwoPredictionJson",
     "trainComponentTwoBtn",
-    "componentTwoPlatformBtn"
+    "componentTwoPlatformBtn",
+    "c3IntentCount",
+    "c3RuleCount",
+    "c3AvgLatency",
+    "c3ContextScore",
+    "componentThreeIntentForm",
+    "componentThreeContextForm",
+    "componentThreeOutputJson",
+    "componentThreePlatformBtn",
+    "componentThreeHostsBtn",
+    "c4SessionCount",
+    "c4SessionRisk",
+    "c4QuarantineCount",
+    "c4BlockedIocCount",
+    "c4RuleCount",
+    "c4MitigationLatency",
+    "componentFourAuthForm",
+    "componentFourSecurityForm",
+    "componentFourLoginBtn",
+    "componentFourEnforceSegBtn",
+    "componentFourFetchCtiBtn",
+    "componentFourBlockIocBtn",
+    "componentFourPlatformBtn",
+    "componentFourRulesBtn",
+    "componentFourOutputJson"
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -76,6 +115,8 @@ function cacheElements() {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", () => refreshAll());
+  els.runIntegratedBtn.addEventListener("click", runIntegratedModel);
+  els.validatePlatformBtn.addEventListener("click", validatePlatformStack);
   els.autoRefresh.addEventListener("change", (event) => {
     state.autoRefresh = event.target.checked;
   });
@@ -99,28 +140,52 @@ function bindEvents() {
   els.componentTwoTelemetryForm.addEventListener("submit", submitComponentTwoTelemetry);
   els.trainComponentTwoBtn.addEventListener("click", trainComponentTwoModels);
   els.componentTwoPlatformBtn.addEventListener("click", showComponentTwoPlatform);
+  els.componentThreeIntentForm.addEventListener("submit", submitComponentThreeIntent);
+  els.componentThreeContextForm.addEventListener("submit", submitComponentThreeContext);
+  els.componentThreePlatformBtn.addEventListener("click", showComponentThreePlatform);
+  els.componentThreeHostsBtn.addEventListener("click", showComponentThreeHosts);
+  els.componentFourLoginBtn.addEventListener("click", loginComponentFourSession);
+  els.componentFourAuthForm.addEventListener("submit", verifyComponentFourSession);
+  els.componentFourSecurityForm.addEventListener("submit", evaluateComponentFourSecurity);
+  els.componentFourEnforceSegBtn.addEventListener("click", enforceComponentFourSegmentation);
+  els.componentFourFetchCtiBtn.addEventListener("click", fetchComponentFourCti);
+  els.componentFourBlockIocBtn.addEventListener("click", blockComponentFourIoc);
+  els.componentFourPlatformBtn.addEventListener("click", showComponentFourPlatform);
+  els.componentFourRulesBtn.addEventListener("click", showComponentFourRules);
   document.querySelectorAll("[data-c2-scenario]").forEach((button) => {
     button.addEventListener("click", () => fillComponentTwoScenario(button.dataset.c2Scenario));
+  });
+  document.querySelectorAll("[data-c3-scenario]").forEach((button) => {
+    button.addEventListener("click", () => fillComponentThreeScenario(button.dataset.c3Scenario));
+  });
+  document.querySelectorAll("[data-c4-scenario]").forEach((button) => {
+    button.addEventListener("click", () => fillComponentFourScenario(button.dataset.c4Scenario));
   });
 }
 
 async function refreshAll(options = {}) {
   setApiStatus("loading", "Refreshing");
   try {
-    const [health, snapshot, componentOne, componentTwo] = await Promise.all([
+    const [health, snapshot, componentOne, componentTwo, componentThree, componentFour, integrated] = await Promise.all([
       apiRequest("/healthz"),
       apiRequest("/api/v1/state"),
       apiRequest("/api/v1/component-1/status"),
-      apiRequest("/api/v1/component-2/status")
+      apiRequest("/api/v1/component-2/status"),
+      apiRequest("/api/v1/component-3/status"),
+      apiRequest("/api/v1/component-4/status"),
+      apiRequest("/api/v1/integrated/status")
     ]);
     state.health = health;
     state.snapshot = snapshot;
     state.componentOne = componentOne;
     state.componentTwo = componentTwo;
+    state.componentThree = componentThree;
+    state.componentFour = componentFour;
+    state.integrated = integrated;
     renderState();
     setApiStatus("online", "Online");
     if (!options.quiet) {
-      showToast("Component 1 state refreshed");
+      showToast("Runtime state refreshed");
     }
   } catch (error) {
     setApiStatus("offline", "Offline");
@@ -162,8 +227,12 @@ function renderState() {
   renderFlowRules();
   renderTimeline();
   renderComponentTwo();
+  renderComponentThree();
+  renderComponentFour();
+  renderIntegratedStatus();
   renderComponentPanel();
   renderComponentNav();
+  renderWorkspaceVisibility();
 }
 
 function renderLatestAction() {
@@ -215,8 +284,41 @@ function renderComponentNav() {
       state.selectedComponentId = button.dataset.component;
       renderComponentNav();
       renderComponentPanel();
+      renderWorkspaceVisibility();
     });
   });
+}
+
+function renderWorkspaceVisibility() {
+  document.querySelectorAll("[data-workspace]").forEach((section) => {
+    section.classList.toggle("workspace-hidden", section.dataset.workspace !== state.selectedComponentId);
+  });
+}
+
+function renderIntegratedStatus() {
+  const integrated = state.integrated || {};
+  const health = integrated.operator_health || {};
+  const readiness = integrated.readiness || {};
+  const runs = integrated.integrated_runs || {};
+  const monitoringReady = readiness.monitoring?.files_ready;
+  const sdnFilesReady = readiness.sdn_lab?.files_ready;
+  const realSdnReady = readiness.sdn_lab?.real_dataplane_ready;
+  const latest = state.latestIntegratedRun;
+
+  els.combinedHealth.textContent = health.automatic_pipeline_ready ? "Ready" : "Check";
+  state.integratedRunCount = Math.max(state.integratedRunCount || 0, Number(runs.count || 0));
+  els.combinedRuns.textContent = state.integratedRunCount || 0;
+  els.combinedLatency.textContent = latest?.latency_ms ? `${Number(latest.latency_ms).toFixed(1)} ms latest` : "latency pending";
+  els.monitoringReady.textContent = monitoringReady ? "Ready" : "Check";
+  els.sdnReady.textContent = realSdnReady ? "Live" : (sdnFilesReady ? "Prepared" : "Check");
+  if (!latest && !state.platformValidation) {
+    els.integratedRunJson.textContent = JSON.stringify({
+      automatic_pipeline: health.automatic_pipeline_ready || false,
+      observability_files_ready: monitoringReady || false,
+      sdn_lab_files_ready: sdnFilesReady || false,
+      real_sdn_runtime_ready: realSdnReady || false
+    }, null, 2);
+  }
 }
 
 function renderComponentPanel() {
@@ -225,8 +327,8 @@ function renderComponentPanel() {
   const latestByComponent = {
     "component-1": lastItem(c1.events || []),
     "component-2": lastItem((state.snapshot || {}).contexts || []),
-    "component-3": lastItem((state.snapshot || {}).intents || []),
-    "component-4": lastItem((state.snapshot || {}).security_actions || [])
+    "component-3": state.componentThree?.latest_intent || lastItem((state.snapshot || {}).intents || []),
+    "component-4": state.componentFour?.recent_enforcement_events?.slice(-1)[0] || lastItem((state.snapshot || {}).security_actions || [])
   };
   const latest = latestByComponent[component.id] || {};
 
@@ -394,6 +496,42 @@ function renderComponentTwo() {
   }, null, 2);
 }
 
+function renderComponentThree() {
+  const c3 = state.componentThree || {};
+  const metrics = c3.metrics || {};
+  els.c3IntentCount.textContent = metrics.intents_received || 0;
+  els.c3RuleCount.textContent = metrics.rules_generated || 0;
+  const avgLatency = metrics.avg_translation_latency_ms;
+  els.c3AvgLatency.textContent = avgLatency === null || avgLatency === undefined ? "0 ms" : `${Number(avgLatency).toFixed(2)} ms`;
+  els.c3ContextScore.textContent = `${Math.round(Number(metrics.context_score || 0) * 100)}%`;
+  els.componentThreeOutputJson.textContent = JSON.stringify({
+    latest_intent: c3.latest_intent || null,
+    latest_rule: c3.latest_rule || null,
+    latest_context_update: c3.latest_context_update || null,
+    active_rules: metrics.active_rules || 0,
+    hosts: c3.hosts || {}
+  }, null, 2);
+}
+
+function renderComponentFour() {
+  const c4 = state.componentFour || {};
+  const metrics = c4.metrics || {};
+  els.c4SessionCount.textContent = metrics.sessions || 0;
+  els.c4SessionRisk.textContent = `${metrics.suspicious_sessions || 0} suspicious`;
+  els.c4QuarantineCount.textContent = metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
+  els.c4BlockedIocCount.textContent = metrics.blocked_iocs || 0;
+  els.c4RuleCount.textContent = metrics.active_security_rules || 0;
+  const latency = metrics.avg_mitigation_latency_ms;
+  els.c4MitigationLatency.textContent = latency === null || latency === undefined ? "latency pending" : `${Number(latency).toFixed(2)} ms avg`;
+  els.componentFourOutputJson.textContent = JSON.stringify({
+    metrics,
+    sessions: c4.sessions || [],
+    active_rules: c4.active_rules || [],
+    indicators: (c4.indicators || []).slice(0, 8),
+    recent_flow_evaluations: c4.recent_flow_evaluations || []
+  }, null, 2);
+}
+
 async function routeRequest() {
   const payload = {
     client_ip: valueOf("routeClientIp"),
@@ -500,6 +638,49 @@ async function resetComponentOne() {
   }
 }
 
+async function runIntegratedModel() {
+  const scenario = valueOf("integratedScenario") || "mixed";
+  const payload = {
+    scenario,
+    workload_requests: 28,
+    include_monitoring: true,
+    include_intent: true,
+    include_security: true
+  };
+  try {
+    els.runIntegratedBtn.disabled = true;
+    const result = await apiRequest("/api/v1/integrated/run", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.latestIntegratedRun = result;
+    state.integratedRunCount += 1;
+    els.integratedRunJson.textContent = JSON.stringify(result, null, 2);
+    showToast(`Integrated ${prettify(scenario)} run completed`);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.runIntegratedBtn.disabled = false;
+  }
+}
+
+async function validatePlatformStack() {
+  try {
+    els.validatePlatformBtn.disabled = true;
+    const result = await apiRequest("/api/v1/platform/validate");
+    state.platformValidation = result;
+    els.integratedRunJson.textContent = JSON.stringify(result, null, 2);
+    const sdnMode = result.sdn_lab?.mode || "checked";
+    showToast(`Platform validation: ${sdnMode}`);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.validatePlatformBtn.disabled = false;
+  }
+}
+
 async function submitComponentTwoTelemetry(event) {
   event.preventDefault();
   const observed = valueOf("c2ObservedLabel");
@@ -569,6 +750,278 @@ async function showComponentTwoPlatform() {
   }
 }
 
+async function submitComponentThreeIntent(event) {
+  event.preventDefault();
+  const expectedType = valueOf("c3ExpectedType");
+  const payload = {
+    intent: valueOf("c3IntentText"),
+    priority: Number(valueOf("c3Priority")),
+    src_ip: valueOf("c3SrcIp") || null,
+    dst_ip: valueOf("c3DstIp") || null,
+    proto: valueOf("c3Proto") || null,
+    dst_port: Number(valueOf("c3DstPort")),
+    expected_type: expectedType || null
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-3/intents", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    const type = result.component_3_translation?.classification?.type || "generic";
+    showToast(`Intent translated as ${prettify(type)}`);
+    els.componentThreeOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function submitComponentThreeContext(event) {
+  event.preventDefault();
+  const payload = {
+    source: "component-3-frontend",
+    threat: valueOf("c3Threat"),
+    congestion: valueOf("c3Congestion"),
+    load: valueOf("c3Load"),
+    latency_ms: Number(valueOf("c3Latency")),
+    bandwidth_utilization: Number(valueOf("c3Bandwidth")),
+    resource_utilization: Number(valueOf("c3Resource")),
+    time_context: valueOf("c3TimeContext"),
+    policy_context: valueOf("c3PolicyContext")
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-3/context", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast(`Context adapted ${result.component_3_context?.adapted_rules || 0} rules`);
+    els.componentThreeOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function fillComponentThreeScenario(name) {
+  try {
+    const result = await apiRequest(`/api/v1/component-3/scenarios/${encodeURIComponent(name)}`);
+    const intent = result.intent_payload || {};
+    const context = result.context_payload || {};
+    document.getElementById("c3IntentText").value = intent.intent || "";
+    document.getElementById("c3Priority").value = intent.priority ?? 1;
+    document.getElementById("c3ExpectedType").value = intent.expected_type || "";
+    document.getElementById("c3SrcIp").value = intent.src_ip || "";
+    document.getElementById("c3DstIp").value = intent.dst_ip || "";
+    document.getElementById("c3Proto").value = intent.proto || "tcp";
+    document.getElementById("c3DstPort").value = intent.dst_port || 443;
+    document.getElementById("c3Threat").value = context.threat || "low";
+    document.getElementById("c3Congestion").value = context.congestion || "low";
+    document.getElementById("c3Load").value = context.load || "normal";
+    document.getElementById("c3Latency").value = context.latency_ms ?? 35;
+    document.getElementById("c3Bandwidth").value = context.bandwidth_utilization ?? 0.25;
+    document.getElementById("c3Resource").value = context.resource_utilization ?? 0.32;
+    document.getElementById("c3TimeContext").value = context.time_context || "business_hours";
+    document.getElementById("c3PolicyContext").value = context.policy_context || "standard";
+    els.componentThreeOutputJson.textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function showComponentThreePlatform() {
+  try {
+    const result = await apiRequest("/api/v1/component-3/platform");
+    els.componentThreeOutputJson.textContent = JSON.stringify(result, null, 2);
+    showToast("Component 3 platform checked");
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function showComponentThreeHosts() {
+  try {
+    const result = await apiRequest("/api/v1/component-3/hosts");
+    els.componentThreeOutputJson.textContent = JSON.stringify(result, null, 2);
+    showToast(`${result.total_hosts || 0} hosts loaded`);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function loginComponentFourSession() {
+  const payload = {
+    user_id: valueOf("c4UserId"),
+    ip: valueOf("c4LoginIp"),
+    password: valueOf("c4Password")
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-4/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    if (result.token) {
+      document.getElementById("c4Token").value = result.token;
+      showToast("Component 4 session created");
+    } else {
+      showToast(result.error || "Login failed", true);
+    }
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function verifyComponentFourSession(event) {
+  event.preventDefault();
+  const payload = {
+    token: valueOf("c4Token"),
+    ip: valueOf("c4VerifyIp"),
+    bytes_sent: Number(valueOf("c4BytesSent"))
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-4/auth/verify", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast(result.allowed ? "Session allowed" : `Session blocked: ${result.reason || "risk"}`);
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function evaluateComponentFourSecurity(event) {
+  event.preventDefault();
+  const flowPayload = {
+    src_ip: valueOf("c4SrcIp"),
+    dst_ip: valueOf("c4DstIp"),
+    dst_port: Number(valueOf("c4Port")),
+    protocol: valueOf("c4Protocol")
+  };
+  const alertPayload = {
+    src_ip: valueOf("c4Indicator"),
+    signature: valueOf("c4Signature"),
+    severity: Number(valueOf("c4Severity")),
+    threat_type: valueOf("c4Signature")
+  };
+  try {
+    const [flowResult, alertResult] = await Promise.all([
+      apiRequest("/api/v1/component-4/segmentation/evaluate", {
+        method: "POST",
+        body: JSON.stringify(flowPayload)
+      }),
+      apiRequest("/api/v1/component-4/cti/alert", {
+        method: "POST",
+        body: JSON.stringify(alertPayload)
+      })
+    ]);
+    showToast(`${flowResult.allowed ? "Allowed" : "Blocked"} flow, alert ${alertResult.should_block ? "blocked" : "observed"}`);
+    els.componentFourOutputJson.textContent = JSON.stringify({ flowResult, alertResult }, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function enforceComponentFourSegmentation() {
+  try {
+    const result = await apiRequest("/api/v1/component-4/segmentation/enforce", {
+      method: "POST",
+      body: "{}"
+    });
+    showToast(`${result.count || 0} segmentation rules generated`);
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function fetchComponentFourCti() {
+  try {
+    const result = await apiRequest("/api/v1/component-4/cti/fetch", {
+      method: "POST",
+      body: "{}"
+    });
+    showToast(`${result.new_iocs || 0} CTI indicators added`);
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function blockComponentFourIoc() {
+  const payload = {
+    value: valueOf("c4Indicator"),
+    reason: "manual CTI block from console"
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-4/cti/block", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast(`Blocked ${payload.value}`);
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function fillComponentFourScenario(name) {
+  try {
+    const result = await apiRequest(`/api/v1/component-4/scenarios/${encodeURIComponent(name)}`);
+    if (result.flow) {
+      document.getElementById("c4SrcIp").value = result.flow.src_ip || "10.0.0.1";
+      document.getElementById("c4DstIp").value = result.flow.dst_ip || "10.0.0.12";
+      document.getElementById("c4Port").value = result.flow.dst_port || 3306;
+      document.getElementById("c4Protocol").value = result.flow.protocol || "tcp";
+    }
+    if (result.alert) {
+      document.getElementById("c4Indicator").value = result.alert.src_ip || "";
+      document.getElementById("c4Signature").value = result.alert.signature || "";
+      document.getElementById("c4Severity").value = String(result.alert.severity || 1);
+    }
+    if (result.indicator) {
+      document.getElementById("c4Indicator").value = result.indicator.value || "";
+      document.getElementById("c4Signature").value = result.indicator.threat_type || "";
+    }
+    if (result.auth) {
+      document.getElementById("c4UserId").value = result.auth.user_id || "admin";
+      document.getElementById("c4LoginIp").value = result.auth.ip || "10.0.0.2";
+      document.getElementById("c4Password").value = result.auth.password || "admin123";
+      document.getElementById("c4VerifyIp").value = result.auth.verify_ip || result.auth.ip || "10.0.0.2";
+      document.getElementById("c4BytesSent").value = result.auth.bytes_sent || 2048;
+    }
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function showComponentFourPlatform() {
+  try {
+    const result = await apiRequest("/api/v1/component-4/platform");
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    showToast("Component 4 platform checked");
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function showComponentFourRules() {
+  try {
+    const result = await apiRequest("/api/v1/component-4/rules");
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    showToast(`${result.active_rules?.length || 0} active security rules`);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 function activateTab(name) {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.tab === name);
@@ -597,8 +1050,8 @@ function getComponentCounts() {
   return {
     "component-1": (state.componentOne?.events || []).length,
     "component-2": state.componentTwo?.metrics?.predictions || (snapshot.contexts || []).length,
-    "component-3": (snapshot.intents || []).length,
-    "component-4": (snapshot.security_actions || []).length
+    "component-3": state.componentThree?.metrics?.rules_generated || (snapshot.intents || []).length,
+    "component-4": state.componentFour?.metrics?.active_security_rules || (snapshot.security_actions || []).length
   };
 }
 
