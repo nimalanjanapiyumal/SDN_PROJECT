@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from ipaddress import ip_address, ip_network
 from statistics import mean
@@ -7,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 import hmac
 import importlib.util
+import platform as runtime_platform
 import secrets
 import shutil
 import time
@@ -395,7 +397,14 @@ class SecurityService:
         suspicious_sessions = [session for session in self.sessions.values() if session.status == "suspicious"]
         quarantined_sessions = [session for session in self.sessions.values() if session.status == "quarantined"]
         blocked_iocs = [indicator for indicator in self.indicators.values() if indicator.blocked]
+        allowed_flows = [flow for flow in self.flow_evaluations if flow.get("allowed")]
+        blocked_flows = [flow for flow in self.flow_evaluations if not flow.get("allowed")]
         avg_latency = round(mean(self.mitigation_latencies_ms), 3) if self.mitigation_latencies_ms else None
+        baseline_latency = 250.0
+        latency_improvement = round(((baseline_latency - avg_latency) / baseline_latency) * 100.0, 2) if avg_latency is not None else None
+        active_rules = self.active_rules()
+        threat_distribution = self._threat_distribution()
+        workload_zones = sorted({policy.src_zone for policy in self.policies} | {policy.dst_zone for policy in self.policies})
         return {
             "component": {
                 "number": 4,
@@ -421,15 +430,122 @@ class SecurityService:
                 "blocked_subjects": len(self.blocked_subjects),
                 "quarantined_subjects": len(self.quarantined_subjects),
                 "security_rules": len(self.security_rules),
-                "active_security_rules": len(self.active_rules()),
+                "active_security_rules": len(active_rules),
                 "avg_mitigation_latency_ms": avg_latency,
-                "static_firewall_baseline_latency_ms": 250.0,
-                "adaptive_latency_improvement_percent": round(((250.0 - avg_latency) / 250.0) * 100.0, 2) if avg_latency is not None else None,
+                "static_firewall_baseline_latency_ms": baseline_latency,
+                "adaptive_latency_improvement_percent": latency_improvement,
+            },
+            "objectives": {
+                "continuous_authentication": {
+                    "title": "Continuous authentication with controller enforcement",
+                    "implemented": True,
+                    "status": "active" if self.sessions else "ready",
+                    "metric": len(self.sessions),
+                    "metric_label": "sessions",
+                    "detail": f"{len(suspicious_sessions) + len(quarantined_sessions)} sessions have been flagged for re-authentication or isolation.",
+                },
+                "micro_segmentation": {
+                    "title": "Workload isolation through micro-segmentation",
+                    "implemented": True,
+                    "status": "active" if self.flow_evaluations or self.security_rules else "ready",
+                    "metric": len(self.policies),
+                    "metric_label": "policies",
+                    "detail": f"{len(blocked_flows)} lateral flows have been denied across {len(workload_zones)} workload zones.",
+                },
+                "dynamic_cti": {
+                    "title": "Dynamic CTI-driven threat blocking",
+                    "implemented": True,
+                    "status": "active" if self.cti_events or blocked_iocs else "ready",
+                    "metric": len(blocked_iocs),
+                    "metric_label": "blocked IoCs",
+                    "detail": f"{len(self.cti_events)} CTI events have updated controller-side enforcement decisions.",
+                },
+                "benchmark_vs_static_firewall": {
+                    "title": "Benchmark against static firewalls",
+                    "implemented": True,
+                    "status": "measured" if avg_latency is not None else "ready",
+                    "metric": avg_latency,
+                    "metric_label": "adaptive ms",
+                    "detail": (
+                        f"Adaptive mitigation averages {avg_latency} ms versus {baseline_latency:.0f} ms for the static baseline "
+                        f"({latency_improvement}% faster)."
+                        if avg_latency is not None and latency_improvement is not None
+                        else "Latency, controller load, and response improvements become measurable after live enforcement runs."
+                    ),
+                },
+            },
+            "functional_requirements": {
+                "detect_anomalies": {
+                    "title": "Detect anomalies",
+                    "implemented": True,
+                    "status": "active" if self.auth_events or self.cti_events else "ready",
+                    "metric": len(suspicious_sessions) + len(quarantined_sessions),
+                    "metric_label": "flagged subjects",
+                    "detail": "Session behavior, IDS alerts, and IoC matches are scored to trigger adaptive actions.",
+                },
+                "isolate_workloads": {
+                    "title": "Isolate workloads",
+                    "implemented": True,
+                    "status": "active" if blocked_flows or active_rules else "ready",
+                    "metric": len(blocked_flows),
+                    "metric_label": "blocked flows",
+                    "detail": "Cross-zone traffic is checked against SDN policies to stop lateral movement.",
+                },
+                "auto_update_rules": {
+                    "title": "Auto-update rules",
+                    "implemented": True,
+                    "status": "active" if self.enforcement_events else "ready",
+                    "metric": len(active_rules),
+                    "metric_label": "active rules",
+                    "detail": "Threat intelligence and policy actions generate OpenFlow-compatible security rules automatically.",
+                },
+            },
+            "graphs": {
+                "session_states": {
+                    "title": "Session states",
+                    "subtitle": "Continuous authentication coverage",
+                    "items": [
+                        {"label": "Active", "value": len(active_sessions), "color": "#0f9f8e"},
+                        {"label": "Suspicious", "value": len(suspicious_sessions), "color": "#d8a034"},
+                        {"label": "Quarantined", "value": len(quarantined_sessions), "color": "#d85d4b"},
+                    ],
+                },
+                "threat_distribution": {
+                    "title": "Threat mix",
+                    "subtitle": "Indicators and alerts by type",
+                    "items": threat_distribution,
+                },
+                "segmentation_enforcement": {
+                    "title": "Segmentation coverage",
+                    "subtitle": "Isolation policies and flow outcomes",
+                    "items": [
+                        {"label": "Policies", "value": len(self.policies), "color": "#5864c7"},
+                        {"label": "Allowed flows", "value": len(allowed_flows), "color": "#0f9f8e"},
+                        {"label": "Blocked flows", "value": len(blocked_flows), "color": "#d85d4b"},
+                        {"label": "Active rules", "value": len(active_rules), "color": "#2b78c2"},
+                    ],
+                },
+                "benchmark": {
+                    "title": "Adaptive vs static firewall",
+                    "subtitle": "Mitigation latency comparison",
+                    "items": [
+                        {"label": "Adaptive", "value": avg_latency or 0.0, "color": "#0f9f8e", "suffix": "ms"},
+                        {"label": "Static FW", "value": baseline_latency, "color": "#d85d4b", "suffix": "ms"},
+                    ],
+                },
+            },
+            "benchmark": {
+                "adaptive_mitigation_latency_ms": avg_latency,
+                "static_firewall_baseline_latency_ms": baseline_latency,
+                "adaptive_latency_improvement_percent": latency_improvement,
+                "controller_rule_load": len(active_rules),
+                "segmentation_policy_count": len(self.policies),
+                "protected_workload_zones": workload_zones,
             },
             "sessions": [session.as_dict() for session in self.sessions.values()],
             "policies": [policy.as_dict() for policy in self.policies],
             "indicators": [indicator.as_dict() for indicator in self.indicators.values()],
-            "active_rules": self.active_rules(),
+            "active_rules": active_rules,
             "recent_rules": self.security_rules[-30:],
             "recent_auth_events": self.auth_events[-20:],
             "recent_cti_events": self.cti_events[-20:],
@@ -484,6 +600,18 @@ class SecurityService:
         return {"scenario": name, **scenarios.get(name, scenarios["ddos"])}
 
     def platform_status(self) -> Dict[str, Any]:
+        current_platform = runtime_platform.system()
+        local_tools = {
+            "suricata": shutil.which("suricata"),
+            "ryu_manager": shutil.which("ryu-manager"),
+            "mininet_mn": shutil.which("mn"),
+            "ovs_ofctl": shutil.which("ovs-ofctl"),
+            "openstack": shutil.which("openstack"),
+            "tc": shutil.which("tc"),
+            "iptables": shutil.which("iptables"),
+            "nft": shutil.which("nft"),
+            "docker": shutil.which("docker"),
+        }
         return {
             "integrated_backend_mode": "fastapi_adaptive_security_simulator",
             "real_openflow_push_from_integrated_api": False,
@@ -492,17 +620,79 @@ class SecurityService:
                 "mininet": importlib.util.find_spec("mininet") is not None,
                 "flask": importlib.util.find_spec("flask") is not None,
             },
-            "local_tools": {
-                "suricata": shutil.which("suricata"),
-                "ryu_manager": shutil.which("ryu-manager"),
-                "mininet_mn": shutil.which("mn"),
-                "ovs_ofctl": shutil.which("ovs-ofctl"),
-            },
+            "local_tools": local_tools,
             "source_integrations": {
                 "component_4_ryu_controller": "sources/SDN-Security--main/sdn_controller.py",
                 "continuous_auth_module": "src/security_modules/auth_module.py",
                 "micro_segmentation_module": "src/security_modules/micro_seg.py",
                 "cti_module": "src/security_modules/cti_module.py",
+            },
+            "operator_endpoints": [
+                {"name": "Integrated Console", "url": "http://127.0.0.1:8080/", "status": "live"},
+                {"name": "Component 4 Status API", "url": "http://127.0.0.1:8080/api/v1/component-4/status", "status": "live"},
+                {"name": "Session Inventory", "url": "http://127.0.0.1:8080/api/v1/component-4/auth/sessions", "status": "live"},
+                {"name": "Security Rules", "url": "http://127.0.0.1:8080/api/v1/component-4/rules", "status": "live"},
+                {"name": "OpenAPI Docs", "url": "http://127.0.0.1:8080/docs", "status": "interactive"},
+                {"name": "OpenStack Horizon", "url": "http://127.0.0.1/dashboard/", "status": "deploy when OpenStack is available"},
+            ],
+            "deployment_links": [
+                {"name": "OpenStack Install Guide", "url": "https://docs.openstack.org/install-guide/", "scope": "official", "status": "deployment guide"},
+                {"name": "OpenStack Platform Overview", "url": "https://docs.openstack.org/install/", "scope": "official", "status": "platform docs"},
+                {"name": "Ryu Controller", "url": "https://book.ryu-sdn.org/en/", "scope": "official", "status": "controller docs"},
+                {"name": "Mininet", "url": "https://mininet.org/walkthrough", "scope": "official", "status": "network emulation"},
+                {"name": "Suricata", "url": "https://docs.suricata.io/", "scope": "official", "status": "ids/ips docs"},
+                {"name": "Open vSwitch", "url": "https://docs.openvswitch.org/en/stable/intro/install/general/", "scope": "official", "status": "linux dataplane"},
+                {"name": "Prometheus", "url": "http://127.0.0.1:9090/", "scope": "local", "status": "observability"},
+                {"name": "Grafana", "url": "http://127.0.0.1:3000/", "scope": "local", "status": "dashboards"},
+            ],
+            "linux_runtime": {
+                "current_platform": current_platform,
+                "preferred_runtime": "Ubuntu, Debian, WSL2, or native Linux",
+                "linux_mode": current_platform.lower() == "linux",
+                "features": [
+                    {
+                        "name": "Ryu flow enforcement",
+                        "command": "ryu-manager",
+                        "available": bool(local_tools["ryu_manager"]),
+                        "description": "Pushes re-authentication, block, and quarantine flows to the SDN controller.",
+                    },
+                    {
+                        "name": "Mininet topology emulation",
+                        "command": "mn",
+                        "available": bool(local_tools["mininet_mn"]),
+                        "description": "Builds cloud workload topologies for Zero-Trust and lateral-movement tests.",
+                    },
+                    {
+                        "name": "Open vSwitch control",
+                        "command": "ovs-ofctl",
+                        "available": bool(local_tools["ovs_ofctl"]),
+                        "description": "Inspects and validates installed OpenFlow rules in Linux datapaths.",
+                    },
+                    {
+                        "name": "Suricata IDS/IPS",
+                        "command": "suricata",
+                        "available": bool(local_tools["suricata"]),
+                        "description": "Detects anomalies and emits CTI-driven alerts for automatic mitigation.",
+                    },
+                    {
+                        "name": "Linux traffic control",
+                        "command": "tc",
+                        "available": bool(local_tools["tc"]),
+                        "description": "Supports Linux-side rate limiting and QoS responses during attacks.",
+                    },
+                    {
+                        "name": "Host isolation fallback",
+                        "command": local_tools["iptables"] and "iptables" or "nft",
+                        "available": bool(local_tools["iptables"] or local_tools["nft"]),
+                        "description": "Provides host-level isolation when controller-side enforcement is unavailable.",
+                    },
+                    {
+                        "name": "OpenStack cloud control",
+                        "command": "openstack",
+                        "available": bool(local_tools["openstack"]),
+                        "description": "Launches workloads, security groups, and tenant networks from Linux-based clouds.",
+                    },
+                ],
             },
             "note": "The integrated Windows API records security/OpenFlow-compatible rules. Run the preserved Ryu, Mininet, OVS, and Suricata stack on Linux for real dataplane enforcement.",
         }
@@ -715,6 +905,47 @@ class SecurityService:
 
     def _severity_number(self, severity: str) -> int:
         return {"low": 2, "medium": 3, "high": 4, "critical": 5}.get(str(severity).lower(), 3)
+
+    def _threat_distribution(self) -> List[Dict[str, Any]]:
+        counts: Counter[str] = Counter()
+        for indicator in self.indicators.values():
+            counts[self._normalize_threat_bucket(indicator.threat_type)] += 1
+        for event in self.cti_events:
+            payload = event.get("payload") or {}
+            signature = (
+                payload.get("signature")
+                or payload.get("threat_type")
+                or (payload.get("indicator") or {}).get("threat_type")
+            )
+            if signature:
+                counts[self._normalize_threat_bucket(str(signature))] += 1
+        palette = {
+            "DDoS": "#d85d4b",
+            "Spoofing": "#d8a034",
+            "Insider": "#5864c7",
+            "Port Scan": "#2b78c2",
+            "Malware": "#0f9f8e",
+            "Other": "#637069",
+        }
+        ordered = ["DDoS", "Spoofing", "Insider", "Port Scan", "Malware", "Other"]
+        return [
+            {"label": label, "value": counts.get(label, 0), "color": palette[label]}
+            for label in ordered
+        ]
+
+    def _normalize_threat_bucket(self, value: str) -> str:
+        text = str(value or "").lower()
+        if "ddos" in text or "botnet" in text or "flood" in text:
+            return "DDoS"
+        if "spoof" in text or "hijack" in text or "credential" in text:
+            return "Spoofing"
+        if "insider" in text:
+            return "Insider"
+        if "scan" in text or "scanner" in text:
+            return "Port Scan"
+        if "malware" in text or "c2" in text or "command and control" in text:
+            return "Malware"
+        return "Other"
 
     def _auth_event(self, event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         event = {"type": event_type, "payload": payload, "ts": time.time()}

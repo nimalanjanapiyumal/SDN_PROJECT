@@ -8,6 +8,7 @@ const state = {
   componentThree: null,
   componentFour: null,
   integrated: null,
+  automation: null,
   latestIntegratedRun: null,
   platformValidation: null,
   integratedRunCount: 0,
@@ -38,6 +39,9 @@ function cacheElements() {
     "refreshBtn",
     "autoRefresh",
     "integratedScenario",
+    "automationInterval",
+    "startAutomationBtn",
+    "stopAutomationBtn",
     "runIntegratedBtn",
     "validatePlatformBtn",
     "combinedHealth",
@@ -45,6 +49,8 @@ function cacheElements() {
     "combinedLatency",
     "monitoringReady",
     "sdnReady",
+    "automationState",
+    "automationCycles",
     "integratedRunJson",
     "recomputeBtn",
     "routeRequestBtn",
@@ -81,6 +87,8 @@ function cacheElements() {
     "c2MitigationLatency",
     "componentTwoTelemetryForm",
     "componentTwoPredictionJson",
+    "componentTwoOutcomeGrid",
+    "componentTwoLinkGrid",
     "trainComponentTwoBtn",
     "componentTwoPlatformBtn",
     "c3IntentCount",
@@ -106,7 +114,11 @@ function cacheElements() {
     "componentFourBlockIocBtn",
     "componentFourPlatformBtn",
     "componentFourRulesBtn",
-    "componentFourOutputJson"
+    "componentFourOutputJson",
+    "componentFourObjectiveGrid",
+    "componentFourGraphGrid",
+    "componentFourLinuxGrid",
+    "componentFourLinkGrid"
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -115,6 +127,8 @@ function cacheElements() {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", () => refreshAll());
+  els.startAutomationBtn.addEventListener("click", startSystemAutomation);
+  els.stopAutomationBtn.addEventListener("click", stopSystemAutomation);
   els.runIntegratedBtn.addEventListener("click", runIntegratedModel);
   els.validatePlatformBtn.addEventListener("click", validatePlatformStack);
   els.autoRefresh.addEventListener("change", (event) => {
@@ -166,14 +180,15 @@ function bindEvents() {
 async function refreshAll(options = {}) {
   setApiStatus("loading", "Refreshing");
   try {
-    const [health, snapshot, componentOne, componentTwo, componentThree, componentFour, integrated] = await Promise.all([
+    const [health, snapshot, componentOne, componentTwo, componentThree, componentFour, integrated, automation] = await Promise.all([
       apiRequest("/healthz"),
       apiRequest("/api/v1/state"),
       apiRequest("/api/v1/component-1/status"),
       apiRequest("/api/v1/component-2/status"),
       apiRequest("/api/v1/component-3/status"),
       apiRequest("/api/v1/component-4/status"),
-      apiRequest("/api/v1/integrated/status")
+      apiRequest("/api/v1/integrated/status"),
+      apiRequest("/api/v1/automation/status")
     ]);
     state.health = health;
     state.snapshot = snapshot;
@@ -182,6 +197,7 @@ async function refreshAll(options = {}) {
     state.componentThree = componentThree;
     state.componentFour = componentFour;
     state.integrated = integrated;
+    state.automation = automation;
     renderState();
     setApiStatus("online", "Online");
     if (!options.quiet) {
@@ -297,13 +313,14 @@ function renderWorkspaceVisibility() {
 
 function renderIntegratedStatus() {
   const integrated = state.integrated || {};
+  const automation = state.automation || integrated.automation || {};
   const health = integrated.operator_health || {};
   const readiness = integrated.readiness || {};
   const runs = integrated.integrated_runs || {};
   const monitoringReady = readiness.monitoring?.files_ready;
   const sdnFilesReady = readiness.sdn_lab?.files_ready;
   const realSdnReady = readiness.sdn_lab?.real_dataplane_ready;
-  const latest = state.latestIntegratedRun;
+  const latest = state.latestIntegratedRun || runs.latest || automation.last_result;
 
   els.combinedHealth.textContent = health.automatic_pipeline_ready ? "Ready" : "Check";
   state.integratedRunCount = Math.max(state.integratedRunCount || 0, Number(runs.count || 0));
@@ -311,7 +328,13 @@ function renderIntegratedStatus() {
   els.combinedLatency.textContent = latest?.latency_ms ? `${Number(latest.latency_ms).toFixed(1)} ms latest` : "latency pending";
   els.monitoringReady.textContent = monitoringReady ? "Ready" : "Check";
   els.sdnReady.textContent = realSdnReady ? "Live" : (sdnFilesReady ? "Prepared" : "Check");
-  if (!latest && !state.platformValidation) {
+  els.automationState.textContent = automation.running ? "Running" : "Stopped";
+  els.automationCycles.textContent = `${Number(automation.executed_cycles || 0)} cycles`;
+  els.startAutomationBtn.disabled = Boolean(automation.running);
+  els.stopAutomationBtn.disabled = !automation.running;
+  if (latest) {
+    els.integratedRunJson.textContent = JSON.stringify(latest, null, 2);
+  } else if (!state.platformValidation) {
     els.integratedRunJson.textContent = JSON.stringify({
       automatic_pipeline: health.automatic_pipeline_ready || false,
       observability_files_ready: monitoringReady || false,
@@ -324,6 +347,7 @@ function renderIntegratedStatus() {
 function renderComponentPanel() {
   const component = getSelectedComponent();
   const c1 = state.componentOne || {};
+  const metricRows = getComponentMetricRows(component.id);
   const latestByComponent = {
     "component-1": lastItem(c1.events || []),
     "component-2": lastItem((state.snapshot || {}).contexts || []),
@@ -333,30 +357,56 @@ function renderComponentPanel() {
   const latest = latestByComponent[component.id] || {};
 
   els.componentPanel.innerHTML = `
-    <div class="component-hero ${component.accent}">
+    <div class="component-summary ${component.accent}">
       <span>${component.number}</span>
       <div>
         <p class="eyebrow">${escapeHtml(component.owner)}</p>
         <h2>${escapeHtml(component.title)}</h2>
-        <p>${escapeHtml(component.subtitle)}</p>
       </div>
     </div>
-    <div class="feature-strip">
-      ${(component.capabilities || []).map((item) => `<article><strong>${escapeHtml(item)}</strong></article>`).join("")}
+    <div class="summary-metrics">
+      ${metricRows.map(([label, value]) => `
+        <article>
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value))}</strong>
+        </article>
+      `).join("")}
     </div>
-    <div class="component-columns">
-      <div>
-        <h3>Signals</h3>
-        <div class="chips">
-          ${(component.signals || []).map((item) => `<code>${escapeHtml(item)}</code>`).join("")}
-        </div>
-      </div>
-      <div>
-        <h3>Runtime Payload</h3>
-        <pre>${escapeHtml(JSON.stringify(latest, null, 2))}</pre>
-      </div>
-    </div>
+    <details class="payload-drawer compact">
+      <summary>Latest Payload</summary>
+      <pre>${escapeHtml(JSON.stringify(latest, null, 2))}</pre>
+    </details>
   `;
+}
+
+function getComponentMetricRows(componentId) {
+  const c1 = state.componentOne || {};
+  const c2 = state.componentTwo || {};
+  const c3 = state.componentThree || {};
+  const c4 = state.componentFour || {};
+  const rows = {
+    "component-1": [
+      ["Routes", c1.metrics?.rr_decisions || 0],
+      ["GA Runs", c1.metrics?.ga_runs || 0],
+      ["Backends", `${c1.metrics?.healthy_backends || 0}/${c1.metrics?.total_backends || 0}`]
+    ],
+    "component-2": [
+      ["Telemetry", c2.metrics?.telemetry_points || 0],
+      ["Predictions", c2.metrics?.predictions || 0],
+      ["Risk", `${Math.round(Number(c2.latest_prediction?.sla_risk_score || 0) * 100)}%`]
+    ],
+    "component-3": [
+      ["Intents", c3.metrics?.intents_received || 0],
+      ["Rules", c3.metrics?.rules_generated || 0],
+      ["Context", `${Math.round(Number(c3.metrics?.context_score || 0) * 100)}%`]
+    ],
+    "component-4": [
+      ["Sessions", c4.metrics?.sessions || 0],
+      ["Rules", c4.metrics?.active_security_rules || 0],
+      ["Blocked", c4.metrics?.blocked_iocs || 0]
+    ]
+  };
+  return rows[componentId] || [];
 }
 
 function renderBackendSelectors() {
@@ -481,6 +531,8 @@ function renderComponentTwo() {
   const c2 = state.componentTwo || {};
   const metrics = c2.metrics || {};
   const prediction = c2.latest_prediction || {};
+  const outcomes = c2.expected_outcomes || {};
+  const platform = c2.platform || {};
   els.c2TelemetryCount.textContent = metrics.telemetry_points || 0;
   els.c2PredictionCount.textContent = metrics.predictions || 0;
   els.c2LatestLabel.textContent = prediction.label ? prettify(prediction.label) : "None";
@@ -488,11 +540,14 @@ function renderComponentTwo() {
   els.c2RiskScore.textContent = `${Math.round(Number(prediction.sla_risk_score || 0) * 100)}%`;
   const latency = metrics.avg_mitigation_latency_ms;
   els.c2MitigationLatency.textContent = latency === null || latency === undefined ? "latency pending" : `${Number(latency).toFixed(1)} ms mitigation`;
+  els.componentTwoOutcomeGrid.innerHTML = renderComponentTwoOutcomes(outcomes);
+  els.componentTwoLinkGrid.innerHTML = renderComponentTwoLinks(platform);
   els.componentTwoPredictionJson.textContent = JSON.stringify({
     latest_prediction: prediction || null,
     latest_telemetry: c2.latest_telemetry || null,
     models: c2.models || {},
-    platform: c2.platform || {}
+    expected_outcomes: outcomes,
+    platform
   }, null, 2);
 }
 
@@ -516,6 +571,10 @@ function renderComponentThree() {
 function renderComponentFour() {
   const c4 = state.componentFour || {};
   const metrics = c4.metrics || {};
+  const objectives = c4.objectives || {};
+  const functionalRequirements = c4.functional_requirements || {};
+  const graphs = c4.graphs || {};
+  const platform = c4.platform || {};
   els.c4SessionCount.textContent = metrics.sessions || 0;
   els.c4SessionRisk.textContent = `${metrics.suspicious_sessions || 0} suspicious`;
   els.c4QuarantineCount.textContent = metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
@@ -523,8 +582,17 @@ function renderComponentFour() {
   els.c4RuleCount.textContent = metrics.active_security_rules || 0;
   const latency = metrics.avg_mitigation_latency_ms;
   els.c4MitigationLatency.textContent = latency === null || latency === undefined ? "latency pending" : `${Number(latency).toFixed(2)} ms avg`;
+  els.componentFourObjectiveGrid.innerHTML = renderComponentFourObjectives(objectives, functionalRequirements);
+  els.componentFourGraphGrid.innerHTML = renderComponentFourGraphs(graphs);
+  els.componentFourLinuxGrid.innerHTML = renderComponentFourLinux(platform);
+  els.componentFourLinkGrid.innerHTML = renderComponentFourLinks(platform);
   els.componentFourOutputJson.textContent = JSON.stringify({
     metrics,
+    objectives,
+    functional_requirements: functionalRequirements,
+    graphs,
+    benchmark: c4.benchmark || {},
+    platform,
     sessions: c4.sessions || [],
     active_rules: c4.active_rules || [],
     indicators: (c4.indicators || []).slice(0, 8),
@@ -678,6 +746,49 @@ async function validatePlatformStack() {
     showToast(error.message, true);
   } finally {
     els.validatePlatformBtn.disabled = false;
+  }
+}
+
+async function startSystemAutomation() {
+  const preferredScenario = valueOf("integratedScenario") || "mixed";
+  const intervalSec = Number(valueOf("automationInterval")) || 20;
+  const payload = {
+    strategy: preferredScenario === "mixed" ? "adaptive" : "cycle",
+    preferred_scenario: preferredScenario,
+    scenario_sequence: preferredScenario === "mixed" ? ["normal", "congestion", "mixed", "ddos", "port_scan"] : [preferredScenario],
+    interval_sec: intervalSec,
+    workload_requests: 24,
+    include_monitoring: true,
+    include_intent: true,
+    include_security: true,
+    reset_on_start: false
+  };
+  try {
+    els.startAutomationBtn.disabled = true;
+    const result = await apiRequest("/api/v1/automation/start", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.automation = result;
+    showToast(`Automation started at ${intervalSec}s`);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function stopSystemAutomation() {
+  try {
+    els.stopAutomationBtn.disabled = true;
+    const result = await apiRequest("/api/v1/automation/stop", {
+      method: "POST",
+      body: "{}"
+    });
+    state.automation = result;
+    showToast("Automation stopped");
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
   }
 }
 
@@ -1075,6 +1186,214 @@ function showToast(message, isError = false) {
 
 function metricBadge(label, value) {
   return `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`;
+}
+
+function renderComponentTwoOutcomes(outcomes) {
+  const items = Object.values(outcomes || {});
+  if (!items.length) {
+    return `<p class="empty">No outcome data yet.</p>`;
+  }
+  return items.map((item) => {
+    const metric = formatComponentTwoOutcomeMetric(item.metric, item.metric_label);
+    return `
+      <article class="outcome-card">
+        <div class="outcome-top">
+          <strong>${escapeHtml(item.title || "Outcome")}</strong>
+          <span class="pill ${escapeHtml(String(item.status || "ready"))}">${escapeHtml(prettify(item.status || "ready"))}</span>
+        </div>
+        <b>${escapeHtml(metric)}</b>
+        <p>${escapeHtml(item.detail || "")}</p>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderComponentTwoLinks(platform) {
+  const endpoints = platform.monitoring_endpoints || [];
+  const tools = platform.software_tools || [];
+  const hardware = platform.hardware_requirements || {};
+  return `
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Servers</strong>
+        <span>${endpoints.length}</span>
+      </div>
+      <div class="resource-list">
+        ${endpoints.length ? endpoints.map((item) => `
+          <a class="resource-link" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">
+            <span>${escapeHtml(item.name || "Endpoint")}</span>
+            <em>${escapeHtml(item.status || item.category || "link")}</em>
+          </a>
+        `).join("") : `<p class="empty">No local endpoints found.</p>`}
+      </div>
+    </article>
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Platforms</strong>
+        <span>${tools.length}</span>
+      </div>
+      <div class="resource-list">
+        ${tools.length ? tools.map((tool) => `
+          <a class="resource-link" href="${escapeHtml(tool.docs_url || "#")}" target="_blank" rel="noreferrer">
+            <span>${escapeHtml(tool.name || "Tool")}</span>
+            <em>${escapeHtml(`${tool.purpose || "Platform"} | ${tool.installed ? "installed" : (tool.configured ? "files ready" : "not installed")}`)}</em>
+          </a>
+        `).join("") : `<p class="empty">No platform references found.</p>`}
+      </div>
+    </article>
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Hardware</strong>
+        <span>Spec</span>
+      </div>
+      <div class="resource-spec">
+        <span><b>CPU</b>${escapeHtml(hardware.cpu || "n/a")}</span>
+        <span><b>Memory</b>${escapeHtml(hardware.memory || "n/a")}</span>
+        <span><b>Storage</b>${escapeHtml(hardware.storage || "n/a")}</span>
+      </div>
+    </article>
+  `;
+}
+
+function formatComponentTwoOutcomeMetric(value, label) {
+  if (value === null || value === undefined) {
+    return label ? `Pending ${label}` : "Pending";
+  }
+  if (typeof value === "number") {
+    if ((label || "").includes("ms")) {
+      return `${Number(value).toFixed(1)} ms`;
+    }
+    return `${Number(value).toLocaleString()} ${label || ""}`.trim();
+  }
+  return `${value} ${label || ""}`.trim();
+}
+
+function renderComponentFourObjectives(objectives, functionalRequirements) {
+  const cards = [
+    ...Object.values(objectives || {}).map((item) => ({ ...item, kind: "Objective" })),
+    ...Object.values(functionalRequirements || {}).map((item) => ({ ...item, kind: "Function" }))
+  ];
+  if (!cards.length) {
+    return `<p class="empty">No objective data yet.</p>`;
+  }
+  return cards.map((item) => `
+    <article class="outcome-card">
+      <div class="outcome-top">
+        <strong>${escapeHtml(item.title || item.kind || "Item")}</strong>
+        <span class="pill ${escapeHtml(String(item.status || "ready"))}">${escapeHtml(item.kind || "Item")}</span>
+      </div>
+      <b>${escapeHtml(formatComponentTwoOutcomeMetric(item.metric, item.metric_label))}</b>
+      <p>${escapeHtml(item.detail || "")}</p>
+    </article>
+  `).join("");
+}
+
+function renderComponentFourGraphs(graphs) {
+  const charts = Object.values(graphs || {});
+  if (!charts.length) {
+    return `<p class="empty">No graph data yet.</p>`;
+  }
+  return charts.map((chart) => renderBarChartCard(chart)).join("");
+}
+
+function renderBarChartCard(chart) {
+  const items = chart.items || [];
+  const maxValue = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+  return `
+    <article class="chart-card">
+      <div class="resource-head">
+        <strong>${escapeHtml(chart.title || "Chart")}</strong>
+        <span>${escapeHtml(chart.subtitle || "")}</span>
+      </div>
+      <div class="chart-bars">
+        ${items.map((item) => {
+          const value = Number(item.value || 0);
+          const width = Math.max(4, Math.round((value / maxValue) * 100));
+          return `
+            <div class="chart-bar-row">
+              <div class="chart-bar-meta">
+                <span class="chart-bar-label">${escapeHtml(item.label || "Item")}</span>
+                <strong class="chart-bar-value">${escapeHtml(formatChartValue(value, item.suffix))}</strong>
+              </div>
+              <div class="chart-bar-track">
+                <span class="chart-bar-fill" style="width: ${width}%; background: ${escapeHtml(item.color || "#0f9f8e")};"></span>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderComponentFourLinux(platform) {
+  const runtime = platform.linux_runtime || {};
+  const features = runtime.features || [];
+  if (!features.length) {
+    return `<p class="empty">No Linux runtime data yet.</p>`;
+  }
+  return `
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>${escapeHtml(runtime.preferred_runtime || "Linux runtime")}</strong>
+        <span>${escapeHtml(runtime.current_platform || "unknown")}</span>
+      </div>
+      <div class="resource-list">
+        ${features.map((feature) => `
+          <div class="resource-link static">
+            <span>${escapeHtml(feature.name || "Feature")}</span>
+            <em>${escapeHtml(`${feature.available ? "available" : "not installed"} | ${feature.command || "command"}`)}</em>
+            <small>${escapeHtml(feature.description || "")}</small>
+          </div>
+        `).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderComponentFourLinks(platform) {
+  const operatorEndpoints = platform.operator_endpoints || [];
+  const deploymentLinks = platform.deployment_links || [];
+  if (!operatorEndpoints.length && !deploymentLinks.length) {
+    return `<p class="empty">No platform links yet.</p>`;
+  }
+  return `
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Operator links</strong>
+        <span>${operatorEndpoints.length}</span>
+      </div>
+      <div class="resource-list">
+        ${operatorEndpoints.map((item) => `
+          <a class="resource-link" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">
+            <span>${escapeHtml(item.name || "Endpoint")}</span>
+            <em>${escapeHtml(item.status || "link")}</em>
+          </a>
+        `).join("")}
+      </div>
+    </article>
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Deploy links</strong>
+        <span>${deploymentLinks.length}</span>
+      </div>
+      <div class="resource-list">
+        ${deploymentLinks.map((item) => `
+          <a class="resource-link" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">
+            <span>${escapeHtml(item.name || "Platform")}</span>
+            <em>${escapeHtml(`${item.scope || "link"} | ${item.status || "docs"}`)}</em>
+          </a>
+        `).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function formatChartValue(value, suffix = "") {
+  if (suffix === "ms") {
+    return `${Number(value).toFixed(1)} ms`;
+  }
+  return `${Number(value).toLocaleString()}${suffix ? ` ${suffix}` : ""}`;
 }
 
 function percent(value) {

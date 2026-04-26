@@ -41,9 +41,7 @@
       <main class="main">
         <header class="topbar hero-header">
           <div>
-            <p class="eyebrow">Autonomous SDN cloud operations</p>
-            <h1>Adaptive SDN Operations</h1>
-            <p class="headline-copy">Resource allocation, ML telemetry, intent rules, and Zero Trust enforcement connected as one control loop.</p>
+            <h1>Adaptive SDN Console</h1>
           </div>
           <div class="topbar-actions">
             <select class="scenario-select" id="integratedScenario" aria-label="Integrated scenario">
@@ -53,22 +51,40 @@
               <option value="ddos">DDoS</option>
               <option value="port_scan">Port Scan</option>
             </select>
+            <select class="scenario-select" id="automationInterval" aria-label="Automation interval">
+              <option value="10">10 sec</option>
+              <option value="20" selected>20 sec</option>
+              <option value="30">30 sec</option>
+              <option value="60">60 sec</option>
+            </select>
+            <button class="secondary-button" id="startAutomationBtn" type="button">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.1-5L14 10h7V3l-2.7 2.7A8.96 8.96 0 0 0 12 3Z" />
+              </svg>
+              Start
+            </button>
+            <button class="secondary-button subtle" id="stopAutomationBtn" type="button">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M6 6h12v12H6z" />
+              </svg>
+              Stop
+            </button>
             <button class="secondary-button" id="runIntegratedBtn" type="button">
               <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M8 5v14l11-7L8 5Z" />
               </svg>
-              Run Integrated
+              Run
             </button>
             <button class="secondary-button subtle" id="validatePlatformBtn" type="button">
               <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm-1 13.5-3-3 1.4-1.4 1.6 1.6 4.6-4.6L17 9.5l-6 6Z" />
               </svg>
-              Validate Stack
+              Validate
             </button>
             <label class="toggle">
               <input id="autoRefresh" type="checkbox" checked />
               <span></span>
-              <em>Auto refresh</em>
+              <em>Auto</em>
             </label>
             <span class="status-pill" id="apiStatus">
               <span class="status-dot"></span>
@@ -81,7 +97,7 @@
           <article class="ops-card">
             <span>Model</span>
             <strong id="combinedHealth">Ready</strong>
-            <em>4 components connected</em>
+            <em>4 components</em>
           </article>
           <article class="ops-card">
             <span>Runs</span>
@@ -91,15 +107,20 @@
           <article class="ops-card">
             <span>Observability</span>
             <strong id="monitoringReady">Files</strong>
-            <em>Prometheus and Grafana</em>
+            <em>Prometheus</em>
           </article>
           <article class="ops-card">
             <span>SDN Lab</span>
             <strong id="sdnReady">Record</strong>
-            <em>Ryu and Mininet bridge</em>
+            <em>Ryu / Mininet</em>
+          </article>
+          <article class="ops-card">
+            <span>Automation</span>
+            <strong id="automationState">Stopped</strong>
+            <em id="automationCycles">0 cycles</em>
           </article>
           <details class="run-output">
-            <summary>Latest Integrated Output</summary>
+            <summary>Output</summary>
             <pre id="integratedRunJson">{}</pre>
           </details>
         </section>
@@ -137,14 +158,14 @@
             <div class="board-header">
               <div>
                 <p class="eyebrow">SDN control plane</p>
-                <h2>Hybrid Routing Pipeline</h2>
+                <h2>Routing Pipeline</h2>
               </div>
               <div class="button-row">
                 <button class="primary-button" id="routeRequestBtn" type="button">
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="m3 11 18-8-8 18-2-7-8-3Zm6.7 1.3 2 2 2.6-5.9-4.6 3.9Z" />
                   </svg>
-                  Route Request
+                  Route
                 </button>
                 <button class="secondary-button" id="recomputeBtn" type="button">
                   <svg viewBox="0 0 24 24" focusable="false">
@@ -156,16 +177,16 @@
             </div>
 
             <div class="component-one-map" aria-label="Component 1 use-case pipeline">
-              <div class="actor actor-user">Cloud User</div>
-              <div class="pipe-node node-request">Request Resources</div>
-              <div class="pipe-node node-analyze">Analyze Workload</div>
-              <div class="pipe-node node-rr">Apply RR</div>
-              <div class="pipe-node node-ga">Optimize with GA</div>
-              <div class="pipe-node node-update">Update Flow Rules</div>
-              <div class="pipe-node node-monitoring">Monitor Performance</div>
-              <div class="pipe-node node-allocate">Allocate Resources</div>
-              <div class="actor actor-controller">SDN Controller</div>
-              <div class="actor actor-flow">Flow Rule Manager</div>
+              <div class="actor actor-user">User</div>
+              <div class="pipe-node node-request">Request</div>
+              <div class="pipe-node node-analyze">Analyze</div>
+              <div class="pipe-node node-rr">RR</div>
+              <div class="pipe-node node-ga">GA</div>
+              <div class="pipe-node node-update">Sync</div>
+              <div class="pipe-node node-monitoring">Monitor</div>
+              <div class="pipe-node node-allocate">Allocate</div>
+              <div class="actor actor-controller">Controller</div>
+              <div class="actor actor-flow">Flow</div>
               <div class="actor actor-switch">Switches</div>
               <span class="connector c1"></span>
               <span class="connector c2"></span>
@@ -179,7 +200,7 @@
 
           <aside class="decision-panel">
             <div class="panel-heading">
-              <p class="eyebrow">Latest Component 1 action</p>
+              <p class="eyebrow">Latest action</p>
               <h2 id="latestDecisionTitle">Standby</h2>
             </div>
             <dl class="decision-list">
@@ -196,7 +217,10 @@
                 <dd id="latestLatency">0 ms</dd>
               </div>
             </dl>
-            <pre id="latestDecisionJson">{}</pre>
+            <details class="payload-drawer">
+              <summary>Details</summary>
+              <pre id="latestDecisionJson">{}</pre>
+            </details>
           </aside>
         </section>
 
@@ -206,7 +230,7 @@
           <div class="forms-panel">
             <div class="section-title">
               <p class="eyebrow">Controller functions</p>
-              <h2>Component 1 Actions</h2>
+              <h2>Actions</h2>
             </div>
 
             <div class="tabs" role="tablist" aria-label="Component 1 forms">
@@ -236,7 +260,7 @@
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M13 5v6h6v2h-6v6h-2v-6H5v-2h6V5h2Z" />
                 </svg>
-                Install Flow Rule
+                Install
               </button>
             </form>
 
@@ -295,7 +319,7 @@
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" />
                 </svg>
-                Run Workload
+                Run
               </button>
             </form>
           </div>
@@ -305,7 +329,7 @@
           <div class="runtime-panel">
             <div class="section-title">
               <p class="eyebrow">Resource pool</p>
-              <h2>Backend Weights and Health</h2>
+              <h2>Backends</h2>
             </div>
             <div id="backendList" class="backend-list"></div>
           </div>
@@ -313,7 +337,7 @@
           <div class="runtime-panel">
             <div class="section-title">
               <p class="eyebrow">Flow manager</p>
-              <h2>Recent Flow Rules</h2>
+              <h2>Flows</h2>
             </div>
             <div id="flowRuleList" class="flow-rule-list"></div>
           </div>
@@ -322,7 +346,7 @@
         <section class="api-matrix" data-workspace="component-1" aria-label="Component API matrix">
           <div class="section-title">
             <p class="eyebrow">Implementation map</p>
-            <h2>Component 1 Feature Coverage</h2>
+            <h2>API Coverage</h2>
           </div>
           <div id="apiMatrix" class="matrix-grid"></div>
         </section>
@@ -330,7 +354,7 @@
         <section class="component-two-section" data-workspace="component-2" aria-label="Component 2 monitoring and ML workspace">
           <div class="section-title">
             <p class="eyebrow">Component 2</p>
-            <h2>Monitoring, Visualization, and ML Intelligence</h2>
+            <h2>Monitoring and ML</h2>
           </div>
 
           <div class="component-two-grid">
@@ -360,7 +384,7 @@
             <div class="forms-panel">
               <div class="section-title">
                 <p class="eyebrow">Telemetry input</p>
-                <h2>Predict and Feed SDN Policy</h2>
+                <h2>Telemetry</h2>
               </div>
               <form class="component-two-form" id="componentTwoTelemetryForm">
                 <label>
@@ -418,14 +442,35 @@
 
             <div class="runtime-panel">
               <div class="section-title">
-                <p class="eyebrow">Prediction output</p>
-                <h2>ML Decision Loop</h2>
+              <p class="eyebrow">Prediction output</p>
+              <h2>ML Output</h2>
+            </div>
+            <div class="button-row">
+                <button class="secondary-button" id="trainComponentTwoBtn" type="button">Train</button>
+                <button class="secondary-button" id="componentTwoPlatformBtn" type="button">Platform</button>
               </div>
-              <div class="button-row">
-                <button class="secondary-button" id="trainComponentTwoBtn" type="button">Train Models</button>
-                <button class="secondary-button" id="componentTwoPlatformBtn" type="button">Check Platform</button>
+              <details class="payload-drawer">
+                <summary>Details</summary>
+                <pre id="componentTwoPredictionJson">{}</pre>
+              </details>
+            </div>
+          </div>
+
+          <div class="component-two-support-grid">
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Expected outcomes</p>
+                <h2>Outcomes</h2>
               </div>
-              <pre id="componentTwoPredictionJson">{}</pre>
+              <div id="componentTwoOutcomeGrid" class="component-two-outcome-grid"></div>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Servers and platforms</p>
+                <h2>Links</h2>
+              </div>
+              <div id="componentTwoLinkGrid" class="component-two-link-grid"></div>
             </div>
           </div>
         </section>
@@ -433,7 +478,7 @@
         <section class="component-three-section" data-workspace="component-3" aria-label="Component 3 intent controller workspace">
           <div class="section-title">
             <p class="eyebrow">Component 3</p>
-            <h2>Context-Aware Intent-Based Flow Programming</h2>
+            <h2>Intent Controller</h2>
           </div>
 
           <div class="component-three-grid">
@@ -462,11 +507,11 @@
           <div class="component-three-layout">
             <div class="intent-cycle" aria-label="Intent-based controller cycle">
               <div class="cycle-node cycle-intent">Intent</div>
-              <div class="cycle-node cycle-translation">Translation</div>
-              <div class="cycle-node cycle-activation">Activation</div>
-              <div class="cycle-node cycle-ai">AI</div>
-              <div class="cycle-node cycle-assurance">Assurance</div>
-              <div class="cycle-node cycle-infra">Physical and Virtual Infrastructure</div>
+              <div class="cycle-node cycle-translation">Parse</div>
+              <div class="cycle-node cycle-activation">Apply</div>
+              <div class="cycle-node cycle-ai">Assist</div>
+              <div class="cycle-node cycle-assurance">Review</div>
+              <div class="cycle-node cycle-infra">Infra</div>
               <span class="cycle-link l1"></span>
               <span class="cycle-link l2"></span>
               <span class="cycle-link l3"></span>
@@ -477,7 +522,7 @@
             <div class="forms-panel">
               <div class="section-title">
                 <p class="eyebrow">Intent input</p>
-                <h2>Translate Intent to Rules</h2>
+                <h2>Intent to Rules</h2>
               </div>
               <form class="component-three-form" id="componentThreeIntentForm">
                 <label class="wide">
@@ -527,7 +572,7 @@
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M4 4h10v2H6v12h12v-8h2v10H4V4Zm11 0h5v5h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H15V4Z" />
                   </svg>
-                  Generate Rules
+                  Generate
                 </button>
               </form>
             </div>
@@ -537,7 +582,7 @@
             <div class="forms-panel">
               <div class="section-title">
                 <p class="eyebrow">Context update</p>
-                <h2>Adaptive Re-Optimization</h2>
+                <h2>Context</h2>
               </div>
               <form class="component-three-form" id="componentThreeContextForm">
                 <label>
@@ -601,7 +646,7 @@
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.8-2.4 6.6-6 7.8-3.6-1.2-6-4-6-7.8V7.2l6-3Z" />
                   </svg>
-                  Update Context
+                  Apply
                 </button>
               </form>
             </div>
@@ -609,13 +654,16 @@
             <div class="runtime-panel">
               <div class="section-title">
                 <p class="eyebrow">Controller output</p>
-                <h2>Generated Rules and Host Context</h2>
+                <h2>Rules</h2>
               </div>
               <div class="button-row">
-                <button class="secondary-button" id="componentThreePlatformBtn" type="button">Check Platform</button>
+                <button class="secondary-button" id="componentThreePlatformBtn" type="button">Platform</button>
                 <button class="secondary-button" id="componentThreeHostsBtn" type="button">Hosts</button>
               </div>
-              <pre id="componentThreeOutputJson">{}</pre>
+              <details class="payload-drawer">
+                <summary>Details</summary>
+                <pre id="componentThreeOutputJson">{}</pre>
+              </details>
             </div>
           </div>
         </section>
@@ -623,7 +671,7 @@
         <section class="component-four-section" data-workspace="component-4" aria-label="Component 4 adaptive security workspace">
           <div class="section-title">
             <p class="eyebrow">Component 4</p>
-            <h2>Adaptive Security Enforcement Framework</h2>
+            <h2>Security Enforcement</h2>
           </div>
 
           <div class="component-four-grid">
@@ -651,13 +699,13 @@
 
           <div class="component-four-layout">
             <div class="security-map" aria-label="SDN security framework overview">
-              <div class="security-node security-users">Users / Devices</div>
-              <div class="security-node security-auth">Continuous Authentication</div>
-              <div class="security-node security-seg">Micro-Segmentation Policies</div>
-              <div class="security-node security-ids">IDS / IPS Suricata</div>
-              <div class="security-node security-cti">Threat Intelligence Feeds</div>
-              <div class="security-node security-controller">SDN Controller Ryu</div>
-              <div class="security-node security-workloads">Cloud Workloads / VMs</div>
+              <div class="security-node security-users">Users</div>
+              <div class="security-node security-auth">Auth</div>
+              <div class="security-node security-seg">Segment</div>
+              <div class="security-node security-ids">IDS</div>
+              <div class="security-node security-cti">CTI</div>
+              <div class="security-node security-controller">Controller</div>
+              <div class="security-node security-workloads">Workloads</div>
               <span class="security-link s1"></span>
               <span class="security-link s2"></span>
               <span class="security-link s3"></span>
@@ -669,7 +717,7 @@
             <div class="forms-panel">
               <div class="section-title">
                 <p class="eyebrow">Continuous authentication</p>
-                <h2>Session Risk Controls</h2>
+                <h2>Session Risk</h2>
               </div>
               <form class="component-four-form" id="componentFourAuthForm">
                 <label>
@@ -701,7 +749,7 @@
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.8-2.4 6.6-6 7.8-3.6-1.2-6-4-6-7.8V7.2l6-3Z" />
                   </svg>
-                  Verify Request
+                  Verify
                 </button>
               </form>
             </div>
@@ -711,7 +759,7 @@
             <div class="forms-panel">
               <div class="section-title">
                 <p class="eyebrow">Zero Trust controls</p>
-                <h2>Segmentation and Threat Intel</h2>
+                <h2>Zero Trust</h2>
               </div>
               <form class="component-four-form" id="componentFourSecurityForm">
                 <label>
@@ -757,15 +805,15 @@
                   <button class="ghost-button" data-c4-scenario="port_scan" type="button">Port Scan</button>
                 </div>
                 <div class="security-action-row">
-                  <button class="ghost-button" id="componentFourEnforceSegBtn" type="button">Enforce Segmentation</button>
-                  <button class="ghost-button" id="componentFourFetchCtiBtn" type="button">Fetch CTI</button>
+                  <button class="ghost-button" id="componentFourEnforceSegBtn" type="button">Segment</button>
+                  <button class="ghost-button" id="componentFourFetchCtiBtn" type="button">Fetch</button>
                   <button class="ghost-button" id="componentFourBlockIocBtn" type="button">Block IoC</button>
                 </div>
                 <button class="submit-button" type="submit">
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M4 4h16v4H4V4Zm0 6h10v4H4v-4Zm0 6h16v4H4v-4Zm13-6 4 3-4 3v-6Z" />
                   </svg>
-                  Evaluate Flow and Alert
+                  Evaluate
                 </button>
               </form>
             </div>
@@ -773,21 +821,60 @@
             <div class="runtime-panel">
               <div class="section-title">
                 <p class="eyebrow">Security output</p>
-                <h2>Rules, IoCs, and Enforcement</h2>
+                <h2>Rules and IoCs</h2>
               </div>
               <div class="button-row">
-                <button class="secondary-button" id="componentFourPlatformBtn" type="button">Check Platform</button>
+                <button class="secondary-button" id="componentFourPlatformBtn" type="button">Platform</button>
                 <button class="secondary-button" id="componentFourRulesBtn" type="button">Rules</button>
               </div>
-              <pre id="componentFourOutputJson">{}</pre>
+              <details class="payload-drawer">
+                <summary>Details</summary>
+                <pre id="componentFourOutputJson">{}</pre>
+              </details>
+            </div>
+          </div>
+
+          <div class="component-four-support-grid">
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Specific objectives</p>
+                <h2>Objectives</h2>
+              </div>
+              <div id="componentFourObjectiveGrid" class="component-four-objective-grid"></div>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Security graphs</p>
+                <h2>Graphs</h2>
+              </div>
+              <div id="componentFourGraphGrid" class="component-four-graph-grid"></div>
+            </div>
+          </div>
+
+          <div class="component-four-support-grid">
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Linux runtime</p>
+                <h2>Linux Features</h2>
+              </div>
+              <div id="componentFourLinuxGrid" class="component-four-linux-grid"></div>
+            </div>
+
+            <div class="runtime-panel">
+              <div class="section-title">
+                <p class="eyebrow">Platforms and deploy</p>
+                <h2>Links</h2>
+              </div>
+              <div id="componentFourLinkGrid" class="component-four-link-grid"></div>
             </div>
           </div>
         </section>
 
         <section class="runtime-panel compact-events" data-workspace="component-1" aria-label="Recent Component 1 events">
           <div class="section-title">
-            <p class="eyebrow">Audit trail</p>
-            <h2>Recent Events</h2>
+            <p class="eyebrow">Events</p>
+            <h2>Activity</h2>
           </div>
           <div id="eventTimeline" class="timeline"></div>
         </section>

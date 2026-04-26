@@ -30,6 +30,7 @@ from adaptive_cloud_platform.models import (
     ComponentTwoTelemetryRequest,
     ComponentTwoTrainingRequest,
     ContextUpdate,
+    IntegratedAutomationRequest,
     IntegratedRunRequest,
     IntentRequest,
     PolicyEnforcementRequest,
@@ -46,6 +47,7 @@ from adaptive_cloud_platform.services.ml_service import MLService
 from adaptive_cloud_platform.services.monitoring_ml_service import MonitoringMLService
 from adaptive_cloud_platform.services.intent_controller_service import IntentControllerService
 from adaptive_cloud_platform.services.security_service import SecurityService
+from adaptive_cloud_platform.services.automation_service import SystemAutomationService
 
 runtime = get_runtime_config()
 state = IntegratedState()
@@ -57,6 +59,7 @@ monitoring_ml_service = MonitoringMLService(ml_service)
 intent_controller_service = IntentControllerService(state)
 security_service = SecurityService(state)
 integrated_run_history: list[dict] = []
+automation_service: SystemAutomationService | None = None
 
 app = FastAPI(title='Adaptive Cloud SDN Integrated API', version='1.0.0')
 FRONTEND_DIR = Path(__file__).resolve().parent / 'frontend'
@@ -85,6 +88,9 @@ METRIC_COMPONENT4_ACTIVE_RULES = Gauge('adaptive_component4_active_rules', 'Comp
 METRIC_COMPONENT4_RISK_SCORE = Gauge('adaptive_component4_latest_risk_score', 'Latest Component 4 authentication anomaly score')
 METRIC_COMPONENT4_MITIGATION_LATENCY = Gauge('adaptive_component4_mitigation_latency_ms', 'Latest Component 4 mitigation latency')
 METRIC_INTEGRATED_RUN_LATENCY = Gauge('adaptive_integrated_run_latency_ms', 'Latest integrated model run latency')
+METRIC_AUTOMATION_ENABLED = Gauge('adaptive_system_automation_enabled', 'Whether autonomous system automation is running')
+METRIC_AUTOMATION_CYCLES = Counter('adaptive_system_automation_cycles_total', 'Total autonomous system automation cycles', ['scenario', 'strategy'])
+METRIC_AUTOMATION_ERRORS = Counter('adaptive_system_automation_errors_total', 'Total autonomous system automation errors')
 
 # Start a dedicated exporter endpoint for Prometheus scraping
 try:
@@ -232,6 +238,150 @@ def _lightweight_platform_readiness() -> dict:
     }
 
 
+def _automation_context_snapshot() -> dict:
+    component_two = monitoring_ml_service.status()
+    return {
+        'component_1': optimizer.component_status()['metrics'],
+        'component_2': component_two['metrics'],
+        'component_4': security_service.status()['metrics'],
+        'latest_prediction_label': (component_two.get('latest_prediction') or {}).get('label'),
+    }
+
+
+def _execute_integrated_run(payload: IntegratedRunRequest, source: str = 'manual') -> dict:
+    started = time.time()
+    scenario = payload.scenario.lower()
+    if payload.reset:
+        optimizer.reset_runtime()
+        security_service.reset_runtime()
+
+    scenario_map = {
+        'normal': {'c2': 'normal', 'c3': 'video', 'c4': 'insider'},
+        'congestion': {'c2': 'congestion', 'c3': 'load', 'c4': 'insider'},
+        'ddos': {'c2': 'ddos', 'c3': 'security', 'c4': 'ddos'},
+        'port_scan': {'c2': 'port_scan', 'c3': 'security', 'c4': 'port_scan'},
+        'security': {'c2': 'ddos', 'c3': 'security', 'c4': 'ddos'},
+        'mixed': {'c2': 'congestion', 'c3': 'multi', 'c4': 'ddos'},
+    }
+    selected = scenario_map.get(scenario, scenario_map['mixed'])
+    steps: list[dict] = []
+
+    if payload.include_monitoring:
+        metrics = monitoring_ml_service.scenario_metrics(selected['c2'])
+        telemetry = component_two_telemetry(ComponentTwoTelemetryRequest(
+            **metrics,
+            observed_label=selected['c2'] if selected['c2'] in {'normal', 'congestion', 'ddos', 'port_scan'} else None,
+            top_talker_src_ip='10.0.0.1',
+            top_talker_dst_ip='10.0.0.12',
+        ))
+        steps.append({
+            'component': 2,
+            'action': 'telemetry_prediction',
+            'label': telemetry.get('component_2_prediction', {}).get('label'),
+            'recommendation': telemetry.get('component_2_prediction', {}).get('recommendation'),
+            'allocation_triggered': telemetry.get('component_1_allocation', {}).get('triggered'),
+        })
+
+    if payload.include_intent:
+        intent_scenario = intent_controller_service.scenario(selected['c3'])
+        intent_result = component_three_intent(ComponentThreeIntentRequest(**intent_scenario['intent_payload']))
+        context_result = component_three_context(ComponentThreeContextUpdate(**intent_scenario['context_payload']))
+        steps.append({
+            'component': 3,
+            'action': 'intent_and_context',
+            'intent_type': intent_result.get('component_3_translation', {}).get('classification', {}).get('type'),
+            'rules': len(intent_result.get('component_3_translation', {}).get('rules', [])),
+            'adapted_rules': context_result.get('component_3_context', {}).get('adapted_rules', 0),
+        })
+
+    workload = component_one_workload_simulation(ComponentOneWorkloadSimulationRequest(
+        requests=payload.workload_requests,
+        clients=['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.7'],
+        start_port=47000,
+        vip_port=8000,
+        request_size_kb=128.0,
+        recompute_after=True,
+        inject_fault_backend=None,
+    ))
+    steps.append({
+        'component': 1,
+        'action': 'automatic_workload',
+        'routed': workload.get('routed'),
+        'failures': workload.get('failures'),
+        'distribution': workload.get('distribution'),
+    })
+
+    if payload.include_security:
+        security_scenario = security_service.scenario(selected['c4'])
+        security_steps: dict[str, object] = {'component': 4, 'action': 'security_enforcement'}
+        if security_scenario.get('flow'):
+            flow = security_scenario['flow']
+            flow_result = component_four_evaluate_flow(ComponentFourFlowEvaluationRequest(**flow))
+            security_steps['flow_allowed'] = flow_result.get('allowed')
+            security_steps['flow_reason'] = flow_result.get('reason')
+        if security_scenario.get('alert'):
+            alert_result = component_four_cti_alert(ComponentFourAlertRequest(**security_scenario['alert']))
+            security_steps['alert_blocked'] = alert_result.get('should_block')
+        if security_scenario.get('indicator'):
+            indicator = security_scenario['indicator']
+            add_result = component_four_add_indicator(ComponentFourIndicatorRequest(**indicator))
+            block_result = component_four_block_indicator(ComponentFourCtiBlockRequest(value=indicator['value'], reason='integrated scenario'))
+            security_steps['indicator_added'] = add_result.get('added')
+            security_steps['indicator_blocked'] = block_result.get('blocked')
+        steps.append(security_steps)
+
+    latency_ms = (time.time() - started) * 1000.0
+    METRIC_INTEGRATED_RUNS.labels(scenario=scenario).inc()
+    METRIC_INTEGRATED_RUN_LATENCY.set(latency_ms)
+    run_record = {
+        'scenario': scenario,
+        'source': source,
+        'latency_ms': round(latency_ms, 2),
+        'steps': steps,
+        'ts': time.time(),
+    }
+    integrated_run_history.append(run_record)
+    del integrated_run_history[:-120]
+    return {
+        'ran': True,
+        'scenario': scenario,
+        'source': source,
+        'latency_ms': round(latency_ms, 2),
+        'steps': steps,
+        'summary': integrated_status(),
+    }
+
+
+def _automation_cycle_observer(result: dict, snapshot: dict) -> None:
+    if automation_service is None:
+        return
+    status = automation_service.status()
+    METRIC_AUTOMATION_ENABLED.set(1.0 if status.get('running') else 0.0)
+    METRIC_AUTOMATION_CYCLES.labels(
+        scenario=str(snapshot.get('scenario') or result.get('scenario') or 'unknown'),
+        strategy=str(status.get('strategy') or 'adaptive'),
+    ).inc()
+
+
+def _automation_error_observer(_: Exception) -> None:
+    METRIC_AUTOMATION_ERRORS.inc()
+
+
+automation_service = SystemAutomationService(
+    run_callback=_execute_integrated_run,
+    context_callback=_automation_context_snapshot,
+    on_cycle=_automation_cycle_observer,
+    on_error=_automation_error_observer,
+)
+METRIC_AUTOMATION_ENABLED.set(0.0)
+
+
+@app.on_event('shutdown')
+def shutdown_background_services() -> None:
+    if automation_service is not None:
+        automation_service.stop()
+
+
 @app.post('/api/v1/intents')
 def post_intent(payload: IntentRequest) -> dict:
     return _process_intent_payload(payload.model_dump(exclude_none=True))
@@ -356,109 +506,32 @@ def integrated_status() -> dict:
             'count': len(integrated_run_history),
             'latest': integrated_run_history[-1] if integrated_run_history else None,
         },
+        'automation': automation_service.status() if automation_service is not None else {'running': False},
     }
 
 
 @app.post('/api/v1/integrated/run')
 def integrated_run(payload: IntegratedRunRequest) -> dict:
-    started = time.time()
-    scenario = payload.scenario.lower()
-    if payload.reset:
-        optimizer.reset_runtime()
-        security_service.reset_runtime()
+    return _execute_integrated_run(payload, source='manual')
 
-    scenario_map = {
-        'normal': {'c2': 'normal', 'c3': 'video', 'c4': 'insider'},
-        'congestion': {'c2': 'congestion', 'c3': 'load', 'c4': 'insider'},
-        'ddos': {'c2': 'ddos', 'c3': 'security', 'c4': 'ddos'},
-        'port_scan': {'c2': 'port_scan', 'c3': 'security', 'c4': 'port_scan'},
-        'security': {'c2': 'ddos', 'c3': 'security', 'c4': 'ddos'},
-        'mixed': {'c2': 'congestion', 'c3': 'multi', 'c4': 'ddos'},
-    }
-    selected = scenario_map.get(scenario, scenario_map['mixed'])
-    steps: list[dict] = []
 
-    if payload.include_monitoring:
-        metrics = monitoring_ml_service.scenario_metrics(selected['c2'])
-        telemetry = component_two_telemetry(ComponentTwoTelemetryRequest(
-            **metrics,
-            observed_label=selected['c2'] if selected['c2'] in {'normal', 'congestion', 'ddos', 'port_scan'} else None,
-            top_talker_src_ip='10.0.0.1',
-            top_talker_dst_ip='10.0.0.12',
-        ))
-        steps.append({
-            'component': 2,
-            'action': 'telemetry_prediction',
-            'label': telemetry.get('component_2_prediction', {}).get('label'),
-            'recommendation': telemetry.get('component_2_prediction', {}).get('recommendation'),
-            'allocation_triggered': telemetry.get('component_1_allocation', {}).get('triggered'),
-        })
+@app.get('/api/v1/automation/status')
+def automation_status() -> dict:
+    return automation_service.status()
 
-    if payload.include_intent:
-        intent_scenario = intent_controller_service.scenario(selected['c3'])
-        intent_result = component_three_intent(ComponentThreeIntentRequest(**intent_scenario['intent_payload']))
-        context_result = component_three_context(ComponentThreeContextUpdate(**intent_scenario['context_payload']))
-        steps.append({
-            'component': 3,
-            'action': 'intent_and_context',
-            'intent_type': intent_result.get('component_3_translation', {}).get('classification', {}).get('type'),
-            'rules': len(intent_result.get('component_3_translation', {}).get('rules', [])),
-            'adapted_rules': context_result.get('component_3_context', {}).get('adapted_rules', 0),
-        })
 
-    workload = component_one_workload_simulation(ComponentOneWorkloadSimulationRequest(
-        requests=payload.workload_requests,
-        clients=['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.7'],
-        start_port=47000,
-        vip_port=8000,
-        request_size_kb=128.0,
-        recompute_after=True,
-        inject_fault_backend=None,
-    ))
-    steps.append({
-        'component': 1,
-        'action': 'automatic_workload',
-        'routed': workload.get('routed'),
-        'failures': workload.get('failures'),
-        'distribution': workload.get('distribution'),
-    })
+@app.post('/api/v1/automation/start')
+def automation_start(payload: IntegratedAutomationRequest) -> dict:
+    status = automation_service.start(payload)
+    METRIC_AUTOMATION_ENABLED.set(1.0 if status.get('running') else 0.0)
+    return status
 
-    if payload.include_security:
-        security_scenario = security_service.scenario(selected['c4'])
-        security_steps: dict[str, object] = {'component': 4, 'action': 'security_enforcement'}
-        if security_scenario.get('flow'):
-            flow = security_scenario['flow']
-            flow_result = component_four_evaluate_flow(ComponentFourFlowEvaluationRequest(**flow))
-            security_steps['flow_allowed'] = flow_result.get('allowed')
-            security_steps['flow_reason'] = flow_result.get('reason')
-        if security_scenario.get('alert'):
-            alert_result = component_four_cti_alert(ComponentFourAlertRequest(**security_scenario['alert']))
-            security_steps['alert_blocked'] = alert_result.get('should_block')
-        if security_scenario.get('indicator'):
-            indicator = security_scenario['indicator']
-            add_result = component_four_add_indicator(ComponentFourIndicatorRequest(**indicator))
-            block_result = component_four_block_indicator(ComponentFourCtiBlockRequest(value=indicator['value'], reason='integrated scenario'))
-            security_steps['indicator_added'] = add_result.get('added')
-            security_steps['indicator_blocked'] = block_result.get('blocked')
-        steps.append(security_steps)
 
-    latency_ms = (time.time() - started) * 1000.0
-    METRIC_INTEGRATED_RUNS.labels(scenario=scenario).inc()
-    METRIC_INTEGRATED_RUN_LATENCY.set(latency_ms)
-    run_record = {
-        'scenario': scenario,
-        'latency_ms': round(latency_ms, 2),
-        'steps': steps,
-        'ts': time.time(),
-    }
-    integrated_run_history.append(run_record)
-    return {
-        'ran': True,
-        'scenario': scenario,
-        'latency_ms': round(latency_ms, 2),
-        'steps': steps,
-        'summary': integrated_status(),
-    }
+@app.post('/api/v1/automation/stop')
+def automation_stop() -> dict:
+    status = automation_service.stop()
+    METRIC_AUTOMATION_ENABLED.set(1.0 if status.get('running') else 0.0)
+    return status
 
 
 @app.get('/api/v1/platform/validate')

@@ -190,6 +190,19 @@ class IntegratedRunRequest(BaseModel):
     include_intent: bool = True
 
 
+class IntegratedAutomationRequest(BaseModel):
+    strategy: str = Field(default='adaptive')
+    preferred_scenario: str = Field(default='mixed')
+    scenario_sequence: List[str] = Field(default_factory=lambda: ['normal', 'congestion', 'mixed', 'ddos'])
+    interval_sec: float = Field(default=15.0, ge=1.0, le=300.0)
+    workload_requests: int = Field(default=24, ge=1, le=250)
+    include_security: bool = True
+    include_monitoring: bool = True
+    include_intent: bool = True
+    reset_on_start: bool = False
+    max_cycles: Optional[int] = Field(default=None, ge=1, le=10000)
+
+
 class PolicyEnforcementRequest(BaseModel):
     type: str
     src_ip: Optional[str] = None

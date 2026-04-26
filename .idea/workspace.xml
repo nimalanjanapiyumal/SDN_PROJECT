@@ -7,21 +7,16 @@
     <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init3">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/monitoring/grafana/dashboards/overview.json" beforeDir="false" afterPath="$PROJECT_DIR$/monitoring/grafana/dashboards/overview.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/monitoring/prometheus/prometheus.yml" beforeDir="false" afterPath="$PROJECT_DIR$/monitoring/prometheus/prometheus.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ml/models/training_report.json" beforeDir="false" afterPath="$PROJECT_DIR$/ml/models/training_report.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/openapi/openapi.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/openapi/openapi.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/css/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/css/styles.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/js/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/assets/js/app.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/03-intent-controller/component.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/03-intent-controller/component.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/04-security-enforcement/component.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/components/04-security-enforcement/component.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/frontend/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/services/security_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/services/security_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/adaptive_cloud_platform/state.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/adaptive_cloud_platform/state.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_contracts.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_contracts.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_frontend_routes.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_frontend_routes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_security_policy.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_security_policy.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_integrated_runtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_integrated_runtime.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uvicorn_integrated.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/uvicorn_integrated.out.log" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

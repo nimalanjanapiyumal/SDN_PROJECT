@@ -33,6 +33,15 @@ paths:
   /api/v1/platform/validate:
     get:
       summary: Validate Prometheus, Grafana, Ryu, Mininet, OVS, Suricata, and local configuration readiness
+  /api/v1/automation/status:
+    get:
+      summary: Return autonomous system runner status, current strategy, cycle count, and latest automated run
+  /api/v1/automation/start:
+    post:
+      summary: Start the continuous integrated system automation loop across all four components
+  /api/v1/automation/stop:
+    post:
+      summary: Stop the continuous integrated system automation loop
   /api/v1/backends:
     get:
       summary: Return Component 1 backend inventory and runtime metrics

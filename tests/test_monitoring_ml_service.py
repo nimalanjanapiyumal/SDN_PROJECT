@@ -19,3 +19,18 @@ def test_component_two_records_observation_accuracy():
     status = service.status()
     assert status["metrics"]["telemetry_points"] == 1
     assert status["metrics"]["prediction_accuracy_percent"] == 100.0
+
+
+def test_component_two_status_exposes_outcomes_and_platform_links():
+    service = MonitoringMLService(MLService())
+    status = service.status()
+    platform = status["platform"]
+
+    assert status["expected_outcomes"]["real_time_monitoring_and_visualization"]["implemented"] is True
+    assert status["expected_outcomes"]["decision_making_feedback_loop"]["implemented"] is True
+    assert any(item["name"] == "Prometheus Server" for item in platform["monitoring_endpoints"])
+    assert any(tool["name"] == "Grafana" for tool in platform["software_tools"])
+    assert any(
+        tool["name"] == "Scikit-learn" and tool["docs_url"].startswith("https://")
+        for tool in platform["software_tools"]
+    )

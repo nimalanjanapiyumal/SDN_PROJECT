@@ -6,9 +6,16 @@ from adaptive_cloud_platform.app import FRONTEND_DIR, component_one_platform, fa
 def test_frontend_assets_exist():
     index = FRONTEND_DIR / "index.html"
     icon = FRONTEND_DIR / "favicon.svg"
+    content = index.read_text(encoding="utf-8")
     assert index.exists()
     assert icon.exists()
-    assert "Adaptive Cloud SDN Integrated Console" in index.read_text(encoding="utf-8")
+    assert "Adaptive Cloud SDN Integrated Console" in content
+    assert "componentTwoOutcomeGrid" in content
+    assert "componentTwoLinkGrid" in content
+    assert "componentFourObjectiveGrid" in content
+    assert "componentFourGraphGrid" in content
+    assert "componentFourLinuxGrid" in content
+    assert "componentFourLinkGrid" in content
 
 
 def test_favicon_route_exists():

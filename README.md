@@ -40,6 +40,7 @@ http://127.0.0.1:8080/
 Use the top console buttons for production-style operation:
 
 - **Run Integrated** calls `POST /api/v1/integrated/run` and automatically chains Component 2 telemetry, Component 3 intent/context adaptation, Component 1 workload allocation, and Component 4 security enforcement.
+- **Start Auto / Stop** control the continuous combined system runner through `POST /api/v1/automation/start` and `POST /api/v1/automation/stop`.
 - **Validate Stack** calls `GET /api/v1/platform/validate` and reports Prometheus, Grafana, Ryu, Mininet, OVS, Suricata, and runbook readiness.
 
 Start the observability stack when Docker is available:
@@ -99,6 +100,9 @@ bash scripts/run_integrated_sdn_lab.sh mixed 90
 
 - `GET /api/v1/integrated/status` - combined Component 1-4 health, readiness, latest decision, and autonomous run history.
 - `POST /api/v1/integrated/run` - automatic scenario run across monitoring, intent adaptation, resource allocation, and security enforcement.
+- `GET /api/v1/automation/status` - autonomous system runner status including strategy, cycle count, next scenario, and latest automated run.
+- `POST /api/v1/automation/start` - start continuous automation across all four components with interval, scenario strategy, and workload configuration.
+- `POST /api/v1/automation/stop` - stop the continuous automation loop.
 - `GET /api/v1/platform/validate` - local validation for Prometheus/Grafana files, Docker, exporter probes, Ryu, Mininet, OVS, Suricata, and WSL status.
 
 ## Main directories
