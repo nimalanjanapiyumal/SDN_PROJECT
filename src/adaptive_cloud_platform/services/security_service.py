@@ -11,7 +11,9 @@ import importlib.util
 import platform as runtime_platform
 import secrets
 import shutil
+import subprocess
 import time
+import urllib.request
 
 from adaptive_cloud_platform.state import IntegratedState
 
@@ -91,7 +93,7 @@ class ThreatIndicator:
 class SecurityService:
     """Component 4 adaptive security runtime for auth, segmentation, and CTI."""
 
-    ANOMALY_THRESHOLD = 75.0
+    ANOMALY_THRESHOLD = 40.0
     QUARANTINE_THRESHOLD = 90.0
     SECRET = b"adaptive-sdn-component-4"
 
@@ -108,18 +110,29 @@ class SecurityService:
         self.mitigation_latencies_ms: List[float] = []
         self.blocked_subjects: set[str] = set()
         self.quarantined_subjects: set[str] = set()
+        self.subject_access: Dict[str, Dict[str, Any]] = {}
         self._rule_sequence = 0
         self._load_default_policies()
         self._load_static_iocs()
 
-    def build_action(self, action: str, subject: str, reason: str | None = None, severity: int = 3) -> Dict[str, Any]:
-        return {
+    def build_action(
+        self,
+        action: str,
+        subject: str,
+        reason: str | None = None,
+        severity: int = 3,
+        duration_sec: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        payload = {
             "source": "security",
             "action": action,
             "subject": subject,
             "reason": reason or action,
             "severity": severity,
         }
+        if duration_sec is not None:
+            payload["duration_sec"] = int(duration_sec)
+        return payload
 
     def create_session(self, user_id: str, ip: str, password: str) -> Dict[str, Any]:
         if not self._password_ok(password):
@@ -162,19 +175,20 @@ class SecurityService:
                 f"continuous authentication anomaly: {reason}",
                 5,
             )
-        elif session.anomaly_score >= self.ANOMALY_THRESHOLD:
+        elif session.anomaly_score >= self.ANOMALY_THRESHOLD or calculated >= 25.0:
             session.status = "suspicious"
             security_action = self.build_action(
-                "reauthenticate",
+                "temporary_block",
                 session.ip_address,
                 f"continuous authentication anomaly: {reason}",
                 3,
+                duration_sec=300,
             )
         else:
             session.status = "active"
 
         result = {
-            "allowed": session.status != "quarantined" and reason != "ip_mismatch_possible_hijack",
+            "allowed": session.status == "active",
             "reason": reason,
             "session": session.as_dict(),
             "security_action": security_action,
@@ -188,28 +202,66 @@ class SecurityService:
         return result
 
     def enforce_action(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._cleanup_expired_controls()
         started_at = time.perf_counter()
         action = str(payload.get("action") or "observe").lower()
+        if action == "temp_block":
+            action = "temporary_block"
         subject = str(payload.get("subject") or "unknown")
         severity = int(payload.get("severity") or 3)
         reason = payload.get("reason") or action
+        duration_sec = max(30, int(payload.get("duration_sec") or 300))
+        expires_at = None
 
         if action in {"block", "quarantine"}:
+            self.subject_access[subject] = {
+                "action": action,
+                "reason": reason,
+                "severity": severity,
+                "expires_at": None,
+                "updated_at": time.time(),
+            }
             self.blocked_subjects.add(subject)
             if action == "quarantine":
                 self.quarantined_subjects.add(subject)
+            else:
+                self.quarantined_subjects.discard(subject)
+        elif action == "temporary_block":
+            expires_at = time.time() + duration_sec
+            self.subject_access[subject] = {
+                "action": action,
+                "reason": reason,
+                "severity": severity,
+                "expires_at": expires_at,
+                "updated_at": time.time(),
+            }
+            self.blocked_subjects.add(subject)
+            self.quarantined_subjects.discard(subject)
         elif action in {"release", "allow"}:
             self.blocked_subjects.discard(subject)
             self.quarantined_subjects.discard(subject)
-            self._release_matching_sessions(subject)
+            if action == "allow":
+                self.subject_access[subject] = {
+                    "action": "allow",
+                    "reason": reason,
+                    "severity": severity,
+                    "expires_at": None,
+                    "updated_at": time.time(),
+                }
+            else:
+                self.subject_access.pop(subject, None)
+                self._release_matching_sessions(subject)
 
-        if subject in self.indicators and action in {"block", "quarantine"}:
+        if subject in self.indicators and action in {"block", "quarantine", "temporary_block"}:
             self.indicators[subject].blocked = True
 
         if action == "reauthenticate":
             self._mark_session_by_subject(subject, "suspicious")
 
-        rule = self._security_rule(action, subject, severity, reason)
+        if action == "allow":
+            self._mark_session_by_subject(subject, "active")
+
+        rule = self._security_rule(action, subject, severity, reason, expires_at=expires_at)
         latency_ms = (time.perf_counter() - started_at) * 1000.0
         self.mitigation_latencies_ms.append(latency_ms)
         self.mitigation_latencies_ms = self.mitigation_latencies_ms[-200:]
@@ -220,6 +272,8 @@ class SecurityService:
             "severity": severity,
             "latency_ms": round(latency_ms, 3),
             "rule": rule,
+            "reason": reason,
+            "expires_at": expires_at,
             "ts": time.time(),
         }
         self.enforcement_events.append(event)
@@ -230,6 +284,7 @@ class SecurityService:
             "subject": subject,
             "rule": rule,
             "latency_ms": round(latency_ms, 3),
+            "expires_at": expires_at,
             "event": event,
         }
 
@@ -281,13 +336,24 @@ class SecurityService:
         return {"added": True, "policy": policy.as_dict(), "event": event}
 
     def evaluate_flow(self, src_ip: str, dst_ip: str, dst_port: int, protocol: str = "tcp") -> Dict[str, Any]:
+        self._cleanup_expired_controls()
         src_zone = self.zone_for_ip(src_ip)
         dst_zone = self.zone_for_ip(dst_ip)
-        allowed = self._flow_allowed(src_zone, dst_zone, int(dst_port), protocol.lower())
-        security_action = None
-        reason = "same-zone or external flow" if allowed else "micro-segmentation lateral movement block"
-        if not allowed:
-            security_action = self.build_action("quarantine", src_ip, reason, 4)
+        control = self.subject_access.get(src_ip)
+        if control and control.get("action") == "allow":
+            allowed = True
+            reason = "manual allow override"
+            security_action = None
+        elif control and control.get("action") in {"block", "quarantine", "temporary_block"}:
+            allowed = False
+            reason = self._subject_control_reason(src_ip, control)
+            security_action = None
+        else:
+            allowed = self._flow_allowed(src_zone, dst_zone, int(dst_port), protocol.lower())
+            security_action = None
+            reason = "same-zone or external flow" if allowed else "micro-segmentation lateral movement block"
+            if not allowed:
+                security_action = self.build_action("quarantine", src_ip, reason, 4)
 
         evaluation = {
             "src_ip": src_ip,
@@ -393,18 +459,23 @@ class SecurityService:
         }
 
     def status(self) -> Dict[str, Any]:
+        self._cleanup_expired_controls()
         active_sessions = [session for session in self.sessions.values() if session.status == "active"]
         suspicious_sessions = [session for session in self.sessions.values() if session.status == "suspicious"]
         quarantined_sessions = [session for session in self.sessions.values() if session.status == "quarantined"]
         blocked_iocs = [indicator for indicator in self.indicators.values() if indicator.blocked]
         allowed_flows = [flow for flow in self.flow_evaluations if flow.get("allowed")]
         blocked_flows = [flow for flow in self.flow_evaluations if not flow.get("allowed")]
+        active_temp_blocks = [item for item in self.subject_access.values() if item.get("action") == "temporary_block"]
         avg_latency = round(mean(self.mitigation_latencies_ms), 3) if self.mitigation_latencies_ms else None
         baseline_latency = 250.0
         latency_improvement = round(((baseline_latency - avg_latency) / baseline_latency) * 100.0, 2) if avg_latency is not None else None
         active_rules = self.active_rules()
         threat_distribution = self._threat_distribution()
         workload_zones = sorted({policy.src_zone for policy in self.policies} | {policy.dst_zone for policy in self.policies})
+        available_subjects = self._available_subjects()
+        attack_view = self._attack_view()
+        incident_feed = self._incident_feed()
         return {
             "component": {
                 "number": 4,
@@ -429,6 +500,7 @@ class SecurityService:
                 "blocked_iocs": len(blocked_iocs),
                 "blocked_subjects": len(self.blocked_subjects),
                 "quarantined_subjects": len(self.quarantined_subjects),
+                "temporary_blocks": len(active_temp_blocks),
                 "security_rules": len(self.security_rules),
                 "active_security_rules": len(active_rules),
                 "avg_mitigation_latency_ms": avg_latency,
@@ -542,6 +614,9 @@ class SecurityService:
                 "segmentation_policy_count": len(self.policies),
                 "protected_workload_zones": workload_zones,
             },
+            "attack_view": attack_view,
+            "incident_feed": incident_feed,
+            "available_subjects": available_subjects,
             "sessions": [session.as_dict() for session in self.sessions.values()],
             "policies": [policy.as_dict() for policy in self.policies],
             "indicators": [indicator.as_dict() for indicator in self.indicators.values()],
@@ -555,17 +630,23 @@ class SecurityService:
         }
 
     def rules_status(self) -> Dict[str, Any]:
+        self._cleanup_expired_controls()
         return {
             "rules": self.security_rules[-100:],
             "active_rules": self.active_rules(),
             "blocked_subjects": sorted(self.blocked_subjects),
             "quarantined_subjects": sorted(self.quarantined_subjects),
+            "subject_access": self.subject_access,
         }
 
     def active_rules(self) -> List[Dict[str, Any]]:
+        self._cleanup_expired_controls()
         active: Dict[str, Dict[str, Any]] = {}
         for rule in self.security_rules:
             key = str(rule.get("subject") or rule.get("name") or rule.get("id"))
+            expires_at = rule.get("expires_at")
+            if expires_at and float(expires_at) <= time.time():
+                continue
             if rule.get("action") in {"release", "allow"}:
                 active.pop(key, None)
             elif rule.get("enabled", True):
@@ -645,6 +726,15 @@ class SecurityService:
                 {"name": "Prometheus", "url": "http://127.0.0.1:9090/", "scope": "local", "status": "observability"},
                 {"name": "Grafana", "url": "http://127.0.0.1:3000/", "scope": "local", "status": "dashboards"},
             ],
+            "connectivity": {
+                "grafana": self._probe_http("http://127.0.0.1:3000/api/health"),
+                "prometheus": self._probe_http("http://127.0.0.1:9090/-/ready"),
+                "suricata": {
+                    "installed": bool(local_tools["suricata"]),
+                    "running": self._process_running("suricata"),
+                    "command": local_tools["suricata"],
+                },
+            },
             "linux_runtime": {
                 "current_platform": current_platform,
                 "preferred_runtime": "Ubuntu, Debian, WSL2, or native Linux",
@@ -707,6 +797,7 @@ class SecurityService:
         self.mitigation_latencies_ms.clear()
         self.blocked_subjects.clear()
         self.quarantined_subjects.clear()
+        self.subject_access.clear()
         self._rule_sequence = 0
         self._load_default_policies()
         self._load_static_iocs()
@@ -809,12 +900,19 @@ class SecurityService:
                     return True
         return False
 
-    def _security_rule(self, action: str, subject: str, severity: int, reason: str) -> Dict[str, Any]:
-        if action in {"block", "quarantine"}:
+    def _security_rule(
+        self,
+        action: str,
+        subject: str,
+        severity: int,
+        reason: str,
+        expires_at: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if action in {"block", "quarantine", "temporary_block"}:
             match = {"eth_type": 0x0800, "ipv4_src": subject}
             actions = [{"type": "DROP"}]
             priority = 42000 + severity
-            semantic_action = "deny_subject"
+            semantic_action = "temporary_deny_subject" if action == "temporary_block" else "deny_subject"
         elif action == "reauthenticate":
             match = {"eth_type": 0x0800, "ipv4_src": subject}
             actions = [{"type": "COPY_TO_CONTROLLER"}, {"type": "RATE_LIMIT", "pps": 200}]
@@ -839,6 +937,7 @@ class SecurityService:
             actions=actions,
             semantic_action=semantic_action,
             description=reason,
+            expires_at=expires_at,
         )
 
     def _segmentation_rule(
@@ -858,6 +957,7 @@ class SecurityService:
             actions=actions,
             semantic_action="micro_segmentation_acl",
             description=description,
+            expires_at=None,
         )
 
     def _rule(
@@ -870,6 +970,7 @@ class SecurityService:
         actions: List[Dict[str, Any]],
         semantic_action: str,
         description: str,
+        expires_at: Optional[float],
     ) -> Dict[str, Any]:
         self._rule_sequence += 1
         rule = {
@@ -887,6 +988,7 @@ class SecurityService:
             "install_mode": "record_only_fastapi_runtime",
             "enabled": action not in {"release", "allow"},
             "created_at": time.time(),
+            "expires_at": expires_at,
         }
         self.security_rules.append(rule)
         self.security_rules = self.security_rules[-500:]
@@ -905,6 +1007,178 @@ class SecurityService:
 
     def _severity_number(self, severity: str) -> int:
         return {"low": 2, "medium": 3, "high": 4, "critical": 5}.get(str(severity).lower(), 3)
+
+    def _cleanup_expired_controls(self) -> None:
+        now = time.time()
+        expired_subjects = [
+            subject
+            for subject, control in self.subject_access.items()
+            if control.get("action") == "temporary_block" and control.get("expires_at") and float(control["expires_at"]) <= now
+        ]
+        for subject in expired_subjects:
+            self.subject_access.pop(subject, None)
+            self.blocked_subjects.discard(subject)
+            self._release_matching_sessions(subject)
+            self._rule(
+                name=f"security-release-{subject}",
+                action="release",
+                subject=subject,
+                priority=1000,
+                match={"eth_type": 0x0800, "ipv4_src": subject},
+                actions=[{"type": "OUTPUT", "port": "NORMAL"}],
+                semantic_action="release_subject",
+                description="temporary block expired",
+                expires_at=None,
+            )
+
+    def _subject_control_reason(self, subject: str, control: Dict[str, Any]) -> str:
+        action = str(control.get("action") or "block")
+        if action == "temporary_block":
+            expires_at = control.get("expires_at")
+            if expires_at:
+                return f"temporary block active until {time.strftime('%H:%M:%S', time.localtime(float(expires_at)))}"
+        if action == "quarantine":
+            return "subject quarantined by security policy"
+        return control.get("reason") or "manual deny override"
+
+    def _available_subjects(self) -> List[Dict[str, Any]]:
+        subjects: Dict[str, Dict[str, Any]] = {}
+        if self.state:
+            for ip, meta in self.state.hosts.items():
+                control = self.subject_access.get(ip, {})
+                subjects[ip] = {
+                    "label": meta.get("role") or ip,
+                    "ip": ip,
+                    "zone": meta.get("tier"),
+                    "status": self._subject_status(ip),
+                    "override": control.get("action"),
+                    "expires_at": control.get("expires_at"),
+                }
+        for session in self.sessions.values():
+            entry = subjects.setdefault(session.ip_address, {
+                "label": session.user_id,
+                "ip": session.ip_address,
+                "zone": self.zone_for_ip(session.ip_address),
+                "status": self._subject_status(session.ip_address),
+                "override": None,
+                "expires_at": None,
+            })
+            entry["user_id"] = session.user_id
+            entry["session_status"] = session.status
+            entry["anomaly_score"] = round(session.anomaly_score, 2)
+            entry["status"] = self._subject_status(session.ip_address, session.status)
+            control = self.subject_access.get(session.ip_address, {})
+            entry["override"] = control.get("action")
+            entry["expires_at"] = control.get("expires_at")
+        return sorted(subjects.values(), key=lambda item: (str(item.get("zone") or ""), str(item.get("ip") or "")))
+
+    def _subject_status(self, ip: str, session_status: Optional[str] = None) -> str:
+        control = self.subject_access.get(ip, {})
+        action = control.get("action")
+        if action == "temporary_block":
+            return "temp_blocked"
+        if action == "quarantine":
+            return "quarantined"
+        if action == "block":
+            return "denied"
+        if action == "allow":
+            return "allowed"
+        if session_status:
+            return session_status
+        return "observed"
+
+    def _attack_view(self) -> Dict[str, Any]:
+        latest_block = next(
+            (
+                event for event in reversed(self.enforcement_events)
+                if event.get("action") in {"block", "quarantine", "temporary_block"}
+            ),
+            None,
+        )
+        if latest_block:
+            action = str(latest_block.get("action") or "")
+            status = "blocked" if action in {"block", "temporary_block", "quarantine"} else "monitoring"
+            if action == "temporary_block":
+                title = "Temporary block active"
+            elif action == "quarantine":
+                title = "Quarantine active"
+            elif status == "blocked":
+                title = "Threat blocked"
+            else:
+                title = "Attack detected"
+            return {
+                "status": status,
+                "title": title,
+                "subject": latest_block.get("subject"),
+                "action": action,
+                "reason": latest_block.get("reason") or (latest_block.get("rule") or {}).get("description"),
+                "ts": latest_block.get("ts"),
+                "expires_at": latest_block.get("expires_at"),
+                "temporary_blocks": sum(1 for item in self.subject_access.values() if item.get("action") == "temporary_block"),
+            }
+        return {
+            "status": "monitoring",
+            "title": "No active attack block",
+            "subject": None,
+            "action": None,
+            "reason": "Security sensors are watching sessions, traffic, and indicators.",
+            "ts": None,
+            "expires_at": None,
+            "temporary_blocks": sum(1 for item in self.subject_access.values() if item.get("action") == "temporary_block"),
+        }
+
+    def _incident_feed(self) -> List[Dict[str, Any]]:
+        incidents: List[Dict[str, Any]] = []
+        for event in self.enforcement_events[-12:]:
+            incidents.append({
+                "kind": "enforcement",
+                "label": str(event.get("action") or "action"),
+                "subject": event.get("subject"),
+                "status": "blocked" if event.get("action") in {"block", "quarantine", "temporary_block"} else "observed",
+                "reason": event.get("reason") or (event.get("rule") or {}).get("description"),
+                "ts": event.get("ts"),
+                "expires_at": event.get("expires_at"),
+            })
+        for event in self.cti_events[-8:]:
+            payload = event.get("payload") or {}
+            incidents.append({
+                "kind": "cti",
+                "label": str(payload.get("signature") or payload.get("threat_type") or event.get("type") or "cti"),
+                "subject": payload.get("src_ip") or (payload.get("indicator") or {}).get("value"),
+                "status": "blocked" if payload.get("should_block") else "observed",
+                "reason": event.get("type"),
+                "ts": event.get("ts"),
+            })
+        incidents.sort(key=lambda item: float(item.get("ts") or 0.0), reverse=True)
+        return incidents[:10]
+
+    def _probe_http(self, url: str, timeout: float = 1.5) -> Dict[str, Any]:
+        started = time.time()
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return {
+                    "url": url,
+                    "reachable": True,
+                    "status": int(response.status),
+                    "latency_ms": round((time.time() - started) * 1000.0, 2),
+                }
+        except Exception as exc:
+            return {
+                "url": url,
+                "reachable": False,
+                "error": str(exc),
+                "latency_ms": round((time.time() - started) * 1000.0, 2),
+            }
+
+    def _process_running(self, name: str) -> bool:
+        try:
+            if runtime_platform.system().lower() == "windows":
+                result = subprocess.run(["tasklist"], capture_output=True, text=True, timeout=3)
+                return name.lower() in (result.stdout or "").lower()
+            result = subprocess.run(["pgrep", "-f", name], capture_output=True, text=True, timeout=3)
+            return result.returncode == 0 and bool((result.stdout or "").strip())
+        except Exception:
+            return False
 
     def _threat_distribution(self) -> List[Dict[str, Any]]:
         counts: Counter[str] = Counter()

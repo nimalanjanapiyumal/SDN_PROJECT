@@ -788,7 +788,7 @@ def component_four_auth_verify(payload: SessionVerifyRequest) -> dict:
     METRIC_COMPONENT4_RISK_SCORE.set(float(session.get('anomaly_score', 0.0) or 0.0))
     action = result.get('security_action')
     enforcement = None
-    if action and action.get('action') in {'block', 'quarantine', 'release', 'allow'}:
+    if action and action.get('action') in {'block', 'quarantine', 'temporary_block', 'release', 'allow'}:
         enforcement = post_security_action(SecurityActionRequest(**action))
     result['component_4_enforcement'] = enforcement
     return result
@@ -813,6 +813,11 @@ def component_four_add_segmentation_policy(payload: ComponentFourSegmentationPol
         payload.protocol,
         payload.description or '',
     )
+
+
+@app.post('/api/v1/component-4/access')
+def component_four_access(payload: SecurityActionRequest) -> dict:
+    return post_security_action(payload)
 
 
 @app.post('/api/v1/component-4/segmentation/enforce')

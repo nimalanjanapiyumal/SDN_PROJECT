@@ -144,6 +144,7 @@ class SecurityActionRequest(BaseModel):
     subject: str
     severity: int = 3
     reason: Optional[str] = None
+    duration_sec: Optional[int] = None
 
 
 class ComponentFourSegmentationPolicyRequest(BaseModel):

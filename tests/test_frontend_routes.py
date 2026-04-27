@@ -16,6 +16,9 @@ def test_frontend_assets_exist():
     assert "componentFourGraphGrid" in content
     assert "componentFourLinuxGrid" in content
     assert "componentFourLinkGrid" in content
+    assert "componentFourAttackBanner" in content
+    assert "componentFourIncidentList" in content
+    assert "componentFourSubjectList" in content
 
 
 def test_favicon_route_exists():

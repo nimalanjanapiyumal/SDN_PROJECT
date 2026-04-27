@@ -1,4 +1,5 @@
 from adaptive_cloud_platform.app import (
+    component_four_access,
     component_four_auth_login,
     component_four_auth_verify,
     component_four_block_indicator,
@@ -8,6 +9,7 @@ from adaptive_cloud_platform.app import (
 from adaptive_cloud_platform.models import (
     ComponentFourCtiBlockRequest,
     ComponentFourFlowEvaluationRequest,
+    SecurityActionRequest,
     SessionLoginRequest,
     SessionVerifyRequest,
 )
@@ -55,3 +57,16 @@ def test_component_four_cti_block_endpoint_integrates_security_action():
     assert result["blocked"] is True
     assert result["security_action"]["action"] == "block"
     assert result["component_4_enforcement"]["accepted"] is True
+
+
+def test_component_four_access_endpoint_supports_temporary_block():
+    result = component_four_access(SecurityActionRequest(
+        action="temporary_block",
+        subject="10.0.0.7",
+        severity=4,
+        reason="test temporary block",
+        duration_sec=120,
+    ))
+
+    assert result["accepted"] is True
+    assert result["component_4_enforcement"]["action"] == "temporary_block"

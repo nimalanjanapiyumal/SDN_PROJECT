@@ -115,6 +115,9 @@ function cacheElements() {
     "componentFourPlatformBtn",
     "componentFourRulesBtn",
     "componentFourOutputJson",
+    "componentFourAttackBanner",
+    "componentFourIncidentList",
+    "componentFourSubjectList",
     "componentFourObjectiveGrid",
     "componentFourGraphGrid",
     "componentFourLinuxGrid",
@@ -166,6 +169,7 @@ function bindEvents() {
   els.componentFourBlockIocBtn.addEventListener("click", blockComponentFourIoc);
   els.componentFourPlatformBtn.addEventListener("click", showComponentFourPlatform);
   els.componentFourRulesBtn.addEventListener("click", showComponentFourRules);
+  els.componentFourSubjectList.addEventListener("click", handleComponentFourSubjectAction);
   document.querySelectorAll("[data-c2-scenario]").forEach((button) => {
     button.addEventListener("click", () => fillComponentTwoScenario(button.dataset.c2Scenario));
   });
@@ -575,13 +579,20 @@ function renderComponentFour() {
   const functionalRequirements = c4.functional_requirements || {};
   const graphs = c4.graphs || {};
   const platform = c4.platform || {};
+  const attackView = c4.attack_view || {};
+  const incidents = c4.incident_feed || [];
+  const subjects = c4.available_subjects || [];
   els.c4SessionCount.textContent = metrics.sessions || 0;
   els.c4SessionRisk.textContent = `${metrics.suspicious_sessions || 0} suspicious`;
-  els.c4QuarantineCount.textContent = metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
+  els.c4QuarantineCount.textContent = metrics.temporary_blocks || metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
   els.c4BlockedIocCount.textContent = metrics.blocked_iocs || 0;
   els.c4RuleCount.textContent = metrics.active_security_rules || 0;
   const latency = metrics.avg_mitigation_latency_ms;
   els.c4MitigationLatency.textContent = latency === null || latency === undefined ? "latency pending" : `${Number(latency).toFixed(2)} ms avg`;
+  els.componentFourAttackBanner.innerHTML = renderComponentFourAttackBanner(attackView);
+  els.componentFourAttackBanner.className = `attack-banner ${escapeHtml(String(attackView.status || "monitoring"))}`;
+  els.componentFourIncidentList.innerHTML = renderComponentFourIncidentList(incidents);
+  els.componentFourSubjectList.innerHTML = renderComponentFourSubjectList(subjects);
   els.componentFourObjectiveGrid.innerHTML = renderComponentFourObjectives(objectives, functionalRequirements);
   els.componentFourGraphGrid.innerHTML = renderComponentFourGraphs(graphs);
   els.componentFourLinuxGrid.innerHTML = renderComponentFourLinux(platform);
@@ -592,6 +603,9 @@ function renderComponentFour() {
     functional_requirements: functionalRequirements,
     graphs,
     benchmark: c4.benchmark || {},
+    attack_view: attackView,
+    incident_feed: incidents,
+    available_subjects: subjects,
     platform,
     sessions: c4.sessions || [],
     active_rules: c4.active_rules || [],
@@ -1133,6 +1147,36 @@ async function showComponentFourRules() {
   }
 }
 
+async function handleComponentFourSubjectAction(event) {
+  const button = event.target.closest("[data-c4-subject][data-c4-action]");
+  if (!button) {
+    return;
+  }
+  const subject = button.dataset.c4Subject;
+  const action = button.dataset.c4Action;
+  const payload = {
+    source: "component-4-gui",
+    subject,
+    action,
+    severity: action === "allow" ? 2 : 4,
+    reason: action === "allow"
+      ? "manual micro-segmentation allow from GUI"
+      : (action === "temporary_block" ? "temporary anomaly block from GUI" : "manual micro-segmentation deny from GUI"),
+    duration_sec: action === "temporary_block" ? 300 : null
+  };
+  try {
+    const result = await apiRequest("/api/v1/component-4/access", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast(`${prettify(action)} applied to ${subject}`);
+    els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 function activateTab(name) {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.tab === name);
@@ -1354,6 +1398,7 @@ function renderComponentFourLinux(platform) {
 function renderComponentFourLinks(platform) {
   const operatorEndpoints = platform.operator_endpoints || [];
   const deploymentLinks = platform.deployment_links || [];
+  const connectivity = platform.connectivity || {};
   if (!operatorEndpoints.length && !deploymentLinks.length) {
     return `<p class="empty">No platform links yet.</p>`;
   }
@@ -1370,6 +1415,17 @@ function renderComponentFourLinks(platform) {
             <em>${escapeHtml(item.status || "link")}</em>
           </a>
         `).join("")}
+      </div>
+    </article>
+    <article class="resource-card">
+      <div class="resource-head">
+        <strong>Connectivity</strong>
+        <span>Live</span>
+      </div>
+      <div class="resource-list">
+        ${renderConnectivityItem("Grafana", connectivity.grafana)}
+        ${renderConnectivityItem("Prometheus", connectivity.prometheus)}
+        ${renderSuricataConnectivity(connectivity.suricata)}
       </div>
     </article>
     <article class="resource-card">
@@ -1394,6 +1450,110 @@ function formatChartValue(value, suffix = "") {
     return `${Number(value).toFixed(1)} ms`;
   }
   return `${Number(value).toLocaleString()}${suffix ? ` ${suffix}` : ""}`;
+}
+
+function renderComponentFourAttackBanner(attackView) {
+  const title = attackView.title || "Security monitoring";
+  const reason = attackView.reason || "No active incident.";
+  const subject = attackView.subject || "No subject";
+  const action = attackView.action ? prettify(attackView.action) : "Monitoring";
+  const temporaryBlocks = Number(attackView.temporary_blocks || 0);
+  const expiry = attackView.expires_at ? `Until ${formatTime(attackView.expires_at)}` : "Watching live traffic";
+  return `
+    <div class="attack-banner-copy">
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(reason)}</p>
+    </div>
+    <div class="attack-banner-meta">
+      <span>${escapeHtml(subject)}</span>
+      <b>${escapeHtml(action)}</b>
+      <em>${escapeHtml(expiry)} | ${temporaryBlocks} temp blocks</em>
+    </div>
+  `;
+}
+
+function renderComponentFourIncidentList(incidents) {
+  if (!incidents.length) {
+    return `<p class="empty">No incidents yet.</p>`;
+  }
+  return incidents.map((incident) => `
+    <article class="incident-item ${escapeHtml(String(incident.status || "observed"))}">
+      <div>
+        <strong>${escapeHtml(prettify(incident.label || incident.kind || "incident"))}</strong>
+        <span>${escapeHtml(incident.subject || "system")}</span>
+      </div>
+      <div class="incident-meta">
+        <em>${escapeHtml(prettify(incident.status || "observed"))}</em>
+        ${incident.expires_at ? `<small>Until ${escapeHtml(formatTime(incident.expires_at))}</small>` : ""}
+        <small>${escapeHtml(incident.reason || "")}</small>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderComponentFourSubjectList(subjects) {
+  if (!subjects.length) {
+    return `<p class="empty">No hosts available.</p>`;
+  }
+  return subjects.map((subject) => `
+    <article class="subject-row">
+      <div class="subject-main">
+        <div>
+          <strong>${escapeHtml(subject.label || subject.ip || "Subject")}</strong>
+          <span>${escapeHtml(subject.ip || "")} | ${escapeHtml(subject.zone || "external")}</span>
+        </div>
+        <span class="health-pill ${escapeHtml(mapSubjectStatusClass(subject.status))}">${escapeHtml(prettify(subject.status || "observed"))}</span>
+      </div>
+      <div class="subject-meta">
+        <span>Override: ${escapeHtml(prettify(subject.override || "none"))}</span>
+        ${subject.expires_at ? `<span>Until ${escapeHtml(formatTime(subject.expires_at))}</span>` : ""}
+        ${subject.anomaly_score !== undefined ? `<span>Risk ${escapeHtml(String(subject.anomaly_score))}</span>` : ""}
+      </div>
+      <div class="subject-actions">
+        <button class="mini-button" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="allow">Allow</button>
+        <button class="mini-button danger" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="block">Deny</button>
+        <button class="mini-button warning" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="temporary_block">Temp Block</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderConnectivityItem(label, connection) {
+  if (!connection) {
+    return `<div class="resource-link static"><span>${escapeHtml(label)}</span><em>unknown</em></div>`;
+  }
+  const status = connection.reachable ? `reachable | ${connection.status}` : (connection.error || "unreachable");
+  return `
+    <div class="resource-link static">
+      <span>${escapeHtml(label)}</span>
+      <em>${escapeHtml(status)}</em>
+      <small>${escapeHtml(`${Number(connection.latency_ms || 0).toFixed(1)} ms`)}</small>
+    </div>
+  `;
+}
+
+function renderSuricataConnectivity(connection) {
+  if (!connection) {
+    return `<div class="resource-link static"><span>Suricata</span><em>unknown</em></div>`;
+  }
+  return `
+    <div class="resource-link static">
+      <span>Suricata</span>
+      <em>${escapeHtml(`${connection.installed ? "installed" : "not installed"} | ${connection.running ? "running" : "not running"}`)}</em>
+      <small>${escapeHtml(connection.command || "binary not found")}</small>
+    </div>
+  `;
+}
+
+function mapSubjectStatusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value.includes("allow") || value === "active" || value === "observed") {
+    return "healthy";
+  }
+  if (value.includes("temp") || value.includes("suspicious")) {
+    return "warning";
+  }
+  return "offline";
 }
 
 function percent(value) {

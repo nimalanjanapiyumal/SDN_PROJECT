@@ -1010,6 +1010,11 @@ textarea {
   background: var(--coral);
 }
 
+.health-pill.warning {
+  color: #111815;
+  background: var(--gold);
+}
+
 .weight-bar {
   height: 10px;
   margin: 0.72rem 0;
@@ -1187,6 +1192,7 @@ textarea {
 
 .component-two-support-grid,
 .component-four-support-grid,
+.component-four-ops-grid,
 .component-three-layout,
 .component-four-layout {
   display: grid;
@@ -1227,6 +1233,128 @@ textarea {
 
 .component-four-graph-grid {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.attack-banner {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding: 0.9rem;
+  color: #ffffff;
+  border-radius: 8px;
+}
+
+.attack-banner.monitoring {
+  background: #304039;
+}
+
+.attack-banner.blocked {
+  background: linear-gradient(135deg, #d85d4b, #7f2418);
+}
+
+.attack-banner.attack,
+.attack-banner.detected {
+  background: linear-gradient(135deg, #d8a034, #8f6a14);
+}
+
+.attack-banner-copy strong,
+.attack-banner-copy p,
+.attack-banner-meta span,
+.attack-banner-meta b,
+.attack-banner-meta em {
+  display: block;
+}
+
+.attack-banner-copy p {
+  margin: 0.32rem 0 0;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.5;
+}
+
+.attack-banner-meta {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.attack-banner-meta span,
+.attack-banner-meta b,
+.attack-banner-meta em {
+  padding: 0.3rem 0.52rem;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  font-style: normal;
+}
+
+.incident-list,
+.subject-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.incident-item,
+.subject-row {
+  min-width: 0;
+  padding: 0.82rem;
+  background: #f8faf5;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.incident-item {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.incident-item.blocked {
+  border-color: rgba(216, 93, 75, 0.5);
+  background: #fff7f5;
+}
+
+.incident-item > div,
+.subject-main,
+.subject-meta,
+.subject-actions,
+.incident-meta {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.incident-item strong,
+.incident-item span,
+.incident-meta em,
+.incident-meta small,
+.subject-main strong,
+.subject-main span,
+.subject-meta span {
+  display: block;
+}
+
+.incident-meta,
+.subject-meta {
+  color: var(--muted);
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.subject-main {
+  justify-content: space-between;
+}
+
+.subject-actions {
+  margin-top: 0.7rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.mini-button.warning {
+  color: #111815;
+  background: var(--gold);
 }
 
 .outcome-card,
@@ -1867,6 +1995,7 @@ textarea {
   .component-two-link-grid,
   .component-three-grid,
   .component-four-grid,
+  .component-four-ops-grid,
   .component-four-objective-grid,
   .component-four-graph-grid,
   .component-four-link-grid,

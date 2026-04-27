@@ -25,6 +25,22 @@ def test_continuous_auth_quarantines_high_risk_session():
     assert result['security_action']['action'] == 'quarantine'
 
 
+def test_continuous_auth_can_temporary_block_anomalous_session():
+    service = SecurityService()
+    login = service.create_session('admin', '10.0.0.2', 'admin123')
+
+    result = service.verify_session(
+        login['token'],
+        '10.0.0.2',
+        bytes_sent=55 * 1024 * 1024,
+        failed_attempts=1,
+    )
+
+    assert result['allowed'] is False
+    assert result['session']['status'] == 'suspicious'
+    assert result['security_action']['action'] == 'temporary_block'
+
+
 def test_micro_segmentation_blocks_web_to_db_lateral_flow():
     service = SecurityService()
 
@@ -34,6 +50,21 @@ def test_micro_segmentation_blocks_web_to_db_lateral_flow():
     assert result['src_zone'] == 'web'
     assert result['dst_zone'] == 'db'
     assert result['security_action']['action'] == 'quarantine'
+
+
+def test_manual_allow_override_can_open_micro_segmentation_flow():
+    service = SecurityService()
+    service.enforce_action({
+        'action': 'allow',
+        'subject': '10.0.0.1',
+        'severity': 2,
+        'reason': 'manual allow',
+    })
+
+    result = service.evaluate_flow('10.0.0.1', '10.0.0.12', 3306, 'tcp')
+
+    assert result['allowed'] is True
+    assert result['reason'] == 'manual allow override'
 
 
 def test_cti_alert_blocks_known_indicator():
