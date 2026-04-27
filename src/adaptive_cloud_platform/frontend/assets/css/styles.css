@@ -1057,6 +1057,21 @@ textarea {
   justify-content: flex-end;
 }
 
+.backend-security-note {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  color: #5b2f24;
+  background: #fff4ef;
+  border: 1px solid rgba(216, 93, 75, 0.18);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.backend-security-note strong,
+.backend-security-note span {
+  color: inherit;
+}
+
 .mini-button {
   min-height: 32px;
   padding: 0.35rem 0.55rem;
@@ -1294,8 +1309,22 @@ textarea {
   margin-top: 1rem;
 }
 
+.server-analysis-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
 .incident-item,
 .subject-row {
+  min-width: 0;
+  padding: 0.82rem;
+  background: #f8faf5;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.server-analysis-card {
   min-width: 0;
   padding: 0.82rem;
   background: #f8faf5;
@@ -1315,6 +1344,16 @@ textarea {
   background: #fff7f5;
 }
 
+.server-analysis-card.offline {
+  border-color: rgba(216, 93, 75, 0.5);
+  background: #fff7f5;
+}
+
+.server-analysis-card.warning {
+  border-color: rgba(216, 160, 52, 0.35);
+  background: #fffaf0;
+}
+
 .incident-item > div,
 .subject-main,
 .subject-meta,
@@ -1325,13 +1364,25 @@ textarea {
   align-items: center;
 }
 
+.server-analysis-meta {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .incident-item strong,
 .incident-item span,
 .incident-meta em,
 .incident-meta small,
 .subject-main strong,
 .subject-main span,
-.subject-meta span {
+.subject-meta span,
+.server-analysis-card p,
+.server-analysis-meta span {
   display: block;
 }
 
@@ -1350,6 +1401,12 @@ textarea {
   margin-top: 0.7rem;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.server-analysis-card p {
+  margin: 0.55rem 0 0;
+  color: #344740;
+  font-size: 0.84rem;
 }
 
 .mini-button.warning {

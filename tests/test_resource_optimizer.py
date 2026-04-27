@@ -84,6 +84,30 @@ def test_component_four_security_action_faults_matching_backend():
     assert service.lb._get_backend('web-1').healthy is False
 
 
+def test_temporary_security_block_is_visible_and_restores_after_sync_clear():
+    cfg = load_config('configs/system.yaml')
+    service = ResourceOptimizerService(cfg)
+    allocation = service.apply_security_feedback({
+        'action': 'temporary_block',
+        'subject': '10.0.0.7',
+        'reason': 'short anomaly burst',
+        'expires_at': 1777307763.0,
+    })
+
+    assert allocation['triggered'] is True
+    status = service.component_status()
+    backend = next(item for item in status['backends'] if item['name'] == 'web-1')
+    assert backend['healthy'] is False
+    assert backend['security_action'] == 'temporary_block'
+    assert status['metrics']['security_offline_backends'] == 1
+
+    service.sync_security_controls({})
+    restored = service.component_status()
+    backend = next(item for item in restored['backends'] if item['name'] == 'web-1')
+    assert backend['healthy'] is True
+    assert backend['security_action'] is None
+
+
 def test_component_three_load_balance_intent_routes_automatically():
     cfg = load_config('configs/system.yaml')
     service = ResourceOptimizerService(cfg)

@@ -19,6 +19,7 @@ def test_frontend_assets_exist():
     assert "componentFourAttackBanner" in content
     assert "componentFourIncidentList" in content
     assert "componentFourSubjectList" in content
+    assert "componentFourServerAnalysis" in content
 
 
 def test_favicon_route_exists():

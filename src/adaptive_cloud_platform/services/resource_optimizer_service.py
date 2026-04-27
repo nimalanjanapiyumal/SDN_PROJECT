@@ -13,6 +13,7 @@ class ResourceOptimizerService:
         self.lb = HybridLoadBalancer(config)
         self.flow_rules: List[Dict[str, Any]] = []
         self.events: List[Dict[str, Any]] = []
+        self.security_impacts: Dict[str, Dict[str, Any]] = {}
         self.total_requests = 0
         self.failed_requests = 0
         self.rr_decisions = 0
@@ -191,12 +192,19 @@ class ResourceOptimizerService:
             event = self._record_event('security_auto_allocation_skipped', payload={'action': action, 'subject': subject})
             return {'triggered': False, 'backend': None, 'plan': None, 'event': event}
 
-        if action in {'block', 'quarantine'}:
-            health = self.set_backend_health(backend.name, False, f'security {action}: {payload.get("reason") or "policy"}')
+        if action in {'block', 'quarantine', 'temporary_block'}:
+            health = self._apply_security_impact(
+                subject=subject,
+                action=action,
+                reason=str(payload.get("reason") or "policy"),
+                expires_at=payload.get("expires_at"),
+            )
             plan = self.build_plan()
             triggered = True
         elif action in {'release', 'allow'}:
-            health = self.set_backend_health(backend.name, True, f'security {action}: {payload.get("reason") or "policy"}')
+            health = self._clear_security_impact(subject, f'security {action}: {payload.get("reason") or "policy"}')
+            if health is None:
+                health = self.set_backend_health(backend.name, True, f'security {action}: {payload.get("reason") or "policy"}')
             plan = self.build_plan()
             triggered = True
         else:
@@ -210,6 +218,40 @@ class ResourceOptimizerService:
             payload={'triggered': triggered, 'action': action, 'subject': subject, 'health': health, 'plan': plan},
         )
         return {'triggered': triggered, 'backend': backend.name, 'plan': plan, 'event': event}
+
+    def sync_security_controls(self, controls: Dict[str, Dict[str, Any]] | None = None) -> Dict[str, Any]:
+        controls = controls or {}
+        active_subjects = set()
+        transitions: List[Dict[str, Any]] = []
+
+        for subject, control in controls.items():
+            action = str((control or {}).get('action') or '').lower()
+            if action not in {'block', 'quarantine', 'temporary_block'}:
+                continue
+            backend = self._find_backend_by_subject(subject)
+            if backend is None:
+                continue
+            active_subjects.add(subject)
+            current = self.security_impacts.get(backend.name)
+            reason = str((control or {}).get('reason') or f'security {action}')
+            expires_at = (control or {}).get('expires_at')
+            if current and current.get('action') == action and current.get('subject') == subject and current.get('expires_at') == expires_at:
+                if backend.healthy:
+                    transitions.append(self._apply_security_impact(subject, action, reason, expires_at))
+                continue
+            transitions.append(self._apply_security_impact(subject, action, reason, expires_at))
+
+        for backend_name, impact in list(self.security_impacts.items()):
+            if str(impact.get('subject') or '') in active_subjects:
+                continue
+            restored = self._clear_security_impact(str(impact.get('subject') or ''), 'security control cleared')
+            if restored:
+                transitions.append(restored)
+
+        return {
+            'active_security_impacts': len(self.security_impacts),
+            'transitions': [item for item in transitions if item],
+        }
 
     def route_request(
         self,
@@ -322,6 +364,7 @@ class ResourceOptimizerService:
 
     def component_status(self) -> Dict[str, Any]:
         runtime = self.lb.status()
+        backends = self._annotate_backends_with_security(runtime['backends'])
         return {
             'component': {
                 'number': 1,
@@ -340,7 +383,8 @@ class ResourceOptimizerService:
             'vip': runtime['vip'],
             'controller': runtime['controller'],
             'weights': runtime['weights'],
-            'backends': runtime['backends'],
+            'backends': backends,
+            'security_impacts': list(self.security_impacts.values()),
             'active_flows': runtime['active_flows'],
             'flow_rules': self.flow_rules[-30:],
             'events': self.events[-30:],
@@ -351,6 +395,7 @@ class ResourceOptimizerService:
                 'ga_runs': self.ga_runs,
                 'healthy_backends': sum(1 for backend in self.lb.backends if backend.healthy),
                 'total_backends': len(self.lb.backends),
+                'security_offline_backends': sum(1 for impact in self.security_impacts.values() if impact.get('action') in {'block', 'quarantine', 'temporary_block'}),
             },
             'sla': self._sla_summary(),
         }
@@ -359,6 +404,7 @@ class ResourceOptimizerService:
         self.lb = HybridLoadBalancer(self.config)
         self.flow_rules.clear()
         self.events.clear()
+        self.security_impacts.clear()
         self.total_requests = 0
         self.failed_requests = 0
         self.rr_decisions = 0
@@ -430,3 +476,53 @@ class ResourceOptimizerService:
             if subject in {backend.name, backend.ip, backend.mac}:
                 return backend
         return None
+
+    def _apply_security_impact(self, subject: str, action: str, reason: str, expires_at: Any = None) -> Dict[str, Any] | None:
+        backend = self._find_backend_by_subject(subject)
+        if backend is None:
+            return None
+        existing = self.security_impacts.get(backend.name, {})
+        previous_healthy = existing.get('previous_healthy', backend.healthy)
+        impact = {
+            'backend': backend.name,
+            'subject': subject,
+            'action': action,
+            'reason': reason,
+            'expires_at': expires_at,
+            'previous_healthy': previous_healthy,
+            'updated_at': time.time(),
+        }
+        self.security_impacts[backend.name] = impact
+        health = self.set_backend_health(backend.name, False, reason)
+        health['security_impact'] = impact
+        return health
+
+    def _clear_security_impact(self, subject: str, reason: str) -> Dict[str, Any] | None:
+        backend = self._find_backend_by_subject(subject)
+        if backend is None:
+            return None
+        impact = self.security_impacts.pop(backend.name, None)
+        restore_healthy = bool((impact or {}).get('previous_healthy', True))
+        health = self.set_backend_health(backend.name, restore_healthy, reason)
+        health['restored_from_security'] = impact
+        return health
+
+    def _annotate_backends_with_security(self, backends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        annotated: List[Dict[str, Any]] = []
+        for backend in backends:
+            row = dict(backend)
+            impact = self.security_impacts.get(str(backend.get('name') or ''))
+            if impact:
+                row['optimizer_status'] = 'offline'
+                row['security_action'] = impact.get('action')
+                row['security_reason'] = impact.get('reason')
+                row['security_subject'] = impact.get('subject')
+                row['security_expires_at'] = impact.get('expires_at')
+            else:
+                row['optimizer_status'] = 'online' if backend.get('healthy') else 'offline'
+                row['security_action'] = None
+                row['security_reason'] = None
+                row['security_subject'] = None
+                row['security_expires_at'] = None
+            annotated.append(row)
+        return annotated

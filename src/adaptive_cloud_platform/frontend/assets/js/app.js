@@ -118,6 +118,7 @@ function cacheElements() {
     "componentFourAttackBanner",
     "componentFourIncidentList",
     "componentFourSubjectList",
+    "componentFourServerAnalysis",
     "componentFourObjectiveGrid",
     "componentFourGraphGrid",
     "componentFourLinuxGrid",
@@ -441,6 +442,8 @@ function renderBackends() {
     const metrics = backend.metrics || {};
     const capacity = backend.capacity || {};
     const healthClass = backend.healthy ? "healthy" : "offline";
+    const securityAction = backend.security_action ? prettify(backend.security_action) : null;
+    const securityNote = backend.security_reason || null;
     return `
       <article class="backend-row ${healthClass}">
         <div class="backend-main">
@@ -459,7 +462,9 @@ function renderBackends() {
           ${metricBadge("BW", percent(metrics.bw_util))}
           ${metricBadge("LAT", `${Number(metrics.latency_ms || 0).toFixed(0)} ms`)}
           ${metricBadge("CONN", `${metrics.active_connections || 0}/${capacity.max_connections || 100}`)}
+          ${securityAction ? metricBadge("SEC", securityAction) : ""}
         </div>
+        ${securityNote ? `<div class="backend-security-note"><strong>Security:</strong> ${escapeHtml(securityNote)}${backend.security_expires_at ? ` <span>Until ${escapeHtml(formatTime(backend.security_expires_at))}</span>` : ""}</div>` : ""}
         <div class="backend-actions">
           <button class="mini-button" type="button" data-health="${escapeHtml(backend.name)}" data-healthy="true">Enable</button>
           <button class="mini-button danger" type="button" data-health="${escapeHtml(backend.name)}" data-healthy="false">Fault</button>
@@ -582,6 +587,7 @@ function renderComponentFour() {
   const attackView = c4.attack_view || {};
   const incidents = c4.incident_feed || [];
   const subjects = c4.available_subjects || [];
+  const analyses = c4.ip_security_analysis || [];
   els.c4SessionCount.textContent = metrics.sessions || 0;
   els.c4SessionRisk.textContent = `${metrics.suspicious_sessions || 0} suspicious`;
   els.c4QuarantineCount.textContent = metrics.temporary_blocks || metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
@@ -593,6 +599,7 @@ function renderComponentFour() {
   els.componentFourAttackBanner.className = `attack-banner ${escapeHtml(String(attackView.status || "monitoring"))}`;
   els.componentFourIncidentList.innerHTML = renderComponentFourIncidentList(incidents);
   els.componentFourSubjectList.innerHTML = renderComponentFourSubjectList(subjects);
+  els.componentFourServerAnalysis.innerHTML = renderComponentFourServerAnalysis(analyses, state.componentOne?.backends || []);
   els.componentFourObjectiveGrid.innerHTML = renderComponentFourObjectives(objectives, functionalRequirements);
   els.componentFourGraphGrid.innerHTML = renderComponentFourGraphs(graphs);
   els.componentFourLinuxGrid.innerHTML = renderComponentFourLinux(platform);
@@ -606,6 +613,7 @@ function renderComponentFour() {
     attack_view: attackView,
     incident_feed: incidents,
     available_subjects: subjects,
+    ip_security_analysis: analyses,
     platform,
     sessions: c4.sessions || [],
     active_rules: c4.active_rules || [],
@@ -1518,6 +1526,37 @@ function renderComponentFourSubjectList(subjects) {
   `).join("");
 }
 
+function renderComponentFourServerAnalysis(analyses, backends) {
+  if (!analyses.length) {
+    return `<p class="empty">No IP security analysis yet.</p>`;
+  }
+  const backendMap = new Map((backends || []).map((backend) => [backend.ip, backend]));
+  return analyses.map((item) => {
+    const backend = backendMap.get(item.ip);
+    const optimizerStatus = backend ? (backend.optimizer_status || (backend.healthy ? "online" : "offline")) : (item.optimizer_effect || "available");
+    const detail = backend?.security_reason || item.reason || "No active enforcement";
+    return `
+      <article class="server-analysis-card ${escapeHtml(mapSubjectStatusClass(item.security_status))}">
+        <div class="subject-main">
+          <div>
+            <strong>${escapeHtml(item.label || item.ip || "Server")}</strong>
+            <span>${escapeHtml(item.ip || "")} | ${escapeHtml(item.zone || "external")}</span>
+          </div>
+          <span class="health-pill ${escapeHtml(mapRiskClass(item.risk_level))}">${escapeHtml(prettify(item.risk_level || "low"))}</span>
+        </div>
+        <div class="server-analysis-meta">
+          <span>Security: ${escapeHtml(prettify(item.security_status || "observed"))}</span>
+          <span>Risk ${escapeHtml(String(item.risk_score || 0))}</span>
+          <span>Controller: ${escapeHtml(prettify(item.controller_action || "monitor"))}</span>
+          <span>Optimizer: ${escapeHtml(prettify(optimizerStatus))}</span>
+          ${item.expires_at ? `<span>Until ${escapeHtml(formatTime(item.expires_at))}</span>` : ""}
+        </div>
+        <p>${escapeHtml(detail)}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderConnectivityItem(label, connection) {
   if (!connection) {
     return `<div class="resource-link static"><span>${escapeHtml(label)}</span><em>unknown</em></div>`;
@@ -1551,6 +1590,17 @@ function mapSubjectStatusClass(status) {
     return "healthy";
   }
   if (value.includes("temp") || value.includes("suspicious")) {
+    return "warning";
+  }
+  return "offline";
+}
+
+function mapRiskClass(level) {
+  const value = String(level || "").toLowerCase();
+  if (value === "low") {
+    return "healthy";
+  }
+  if (value === "medium") {
     return "warning";
   }
   return "offline";

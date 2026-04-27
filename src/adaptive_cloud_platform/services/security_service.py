@@ -474,6 +474,7 @@ class SecurityService:
         threat_distribution = self._threat_distribution()
         workload_zones = sorted({policy.src_zone for policy in self.policies} | {policy.dst_zone for policy in self.policies})
         available_subjects = self._available_subjects()
+        ip_security_analysis = self._ip_security_analysis(available_subjects)
         attack_view = self._attack_view()
         incident_feed = self._incident_feed()
         return {
@@ -617,6 +618,7 @@ class SecurityService:
             "attack_view": attack_view,
             "incident_feed": incident_feed,
             "available_subjects": available_subjects,
+            "ip_security_analysis": ip_security_analysis,
             "sessions": [session.as_dict() for session in self.sessions.values()],
             "policies": [policy.as_dict() for policy in self.policies],
             "indicators": [indicator.as_dict() for indicator in self.indicators.values()],
@@ -1033,6 +1035,8 @@ class SecurityService:
 
     def _subject_control_reason(self, subject: str, control: Dict[str, Any]) -> str:
         action = str(control.get("action") or "block")
+        if action == "allow":
+            return control.get("reason") or "manual allow override is active"
         if action == "temporary_block":
             expires_at = control.get("expires_at")
             if expires_at:
@@ -1086,6 +1090,54 @@ class SecurityService:
         if session_status:
             return session_status
         return "observed"
+
+    def _ip_security_analysis(self, subjects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        analysis: List[Dict[str, Any]] = []
+        for subject in subjects:
+            ip = str(subject.get("ip") or "")
+            control = self.subject_access.get(ip, {})
+            indicator = self.indicators.get(ip)
+            latest_event = next(
+                (event for event in reversed(self.enforcement_events) if str(event.get("subject") or "") == ip),
+                None,
+            )
+            latest_reason = (latest_event or {}).get("reason")
+            if latest_reason:
+                reason = latest_reason
+            elif control:
+                reason = self._subject_control_reason(ip, control)
+            else:
+                reason = "traffic observed with no active enforcement"
+            risk_score = float(subject.get("anomaly_score") or 0.0)
+            if indicator is not None:
+                risk_score = max(risk_score, 82.0 if indicator.blocked else 54.0)
+            action = str(control.get("action") or "")
+            if action == "temporary_block":
+                risk_score = max(risk_score, 78.0)
+            elif action == "quarantine":
+                risk_score = max(risk_score, 90.0)
+            elif action == "block":
+                risk_score = max(risk_score, 96.0)
+            elif action == "allow":
+                risk_score = min(risk_score, 18.0)
+            risk_score = round(min(100.0, risk_score), 2)
+            analysis.append({
+                "label": subject.get("label") or ip,
+                "ip": ip,
+                "zone": subject.get("zone"),
+                "security_status": subject.get("status") or "observed",
+                "risk_score": risk_score,
+                "risk_level": self._risk_level(risk_score),
+                "controller_action": action or "monitor",
+                "reason": reason,
+                "expires_at": control.get("expires_at"),
+                "indicator_blocked": bool(indicator.blocked) if indicator is not None else False,
+                "indicator_type": indicator.threat_type if indicator is not None else None,
+                "user_id": subject.get("user_id"),
+                "session_status": subject.get("session_status"),
+                "optimizer_effect": "offline" if action in {"block", "quarantine", "temporary_block"} else "available",
+            })
+        return sorted(analysis, key=lambda item: (-float(item.get("risk_score") or 0.0), str(item.get("ip") or "")))
 
     def _attack_view(self) -> Dict[str, Any]:
         latest_block = next(
@@ -1151,6 +1203,15 @@ class SecurityService:
             })
         incidents.sort(key=lambda item: float(item.get("ts") or 0.0), reverse=True)
         return incidents[:10]
+
+    def _risk_level(self, score: float) -> str:
+        if score >= 85.0:
+            return "critical"
+        if score >= 65.0:
+            return "high"
+        if score >= 35.0:
+            return "medium"
+        return "low"
 
     def _probe_http(self, url: str, timeout: float = 1.5) -> Dict[str, Any]:
         started = time.time()

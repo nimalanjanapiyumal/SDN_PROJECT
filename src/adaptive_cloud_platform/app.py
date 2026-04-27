@@ -155,6 +155,11 @@ def _probe_http(url: str, timeout: float = 1.5) -> dict:
         }
 
 
+def _sync_optimizer_security_state() -> dict:
+    rules = security_service.rules_status()
+    return optimizer.sync_security_controls(rules.get('subject_access') or {})
+
+
 def _tool_status(names: list[str]) -> dict:
     return {name: shutil.which(name) for name in names}
 
@@ -240,6 +245,7 @@ def _lightweight_platform_readiness() -> dict:
 
 def _automation_context_snapshot() -> dict:
     component_two = monitoring_ml_service.status()
+    _sync_optimizer_security_state()
     return {
         'component_1': optimizer.component_status()['metrics'],
         'component_2': component_two['metrics'],
@@ -452,7 +458,7 @@ def post_security_action(payload: SecurityActionRequest) -> dict:
     METRIC_SECURITY.inc()
     security_result = security_service.enforce_action(recorded)
     _record_component4_metrics(security_result)
-    allocation = optimizer.apply_security_feedback(recorded)
+    allocation = optimizer.apply_security_feedback({**recorded, 'expires_at': security_result.get('expires_at')})
     if allocation.get('plan'):
         METRIC_COMPONENT1_GA.inc()
         orchestrator.record_resource_plan(allocation['plan'])
@@ -476,12 +482,14 @@ def get_state() -> dict:
 
 @app.get('/api/v1/backends')
 def get_backends() -> dict:
+    _sync_optimizer_security_state()
     return {'backends': optimizer.backend_summary()}
 
 
 @app.get('/api/v1/integrated/status')
 def integrated_status() -> dict:
     readiness = _lightweight_platform_readiness()
+    _sync_optimizer_security_state()
     c1_metrics = optimizer.component_status()['metrics']
     c2_metrics = monitoring_ml_service.status()['metrics']
     c3_metrics = intent_controller_service.status()['metrics']
@@ -586,6 +594,7 @@ def recompute_resource_plan() -> dict:
 # ------------------------------------------------------------------
 @app.get('/api/v1/component-1/status')
 def component_one_status() -> dict:
+    _sync_optimizer_security_state()
     return optimizer.component_status()
 
 

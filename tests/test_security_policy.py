@@ -88,5 +88,6 @@ def test_security_status_exposes_objectives_graphs_and_linux_links():
     assert status["objectives"]["continuous_authentication"]["implemented"] is True
     assert status["functional_requirements"]["auto_update_rules"]["implemented"] is True
     assert status["graphs"]["benchmark"]["title"] == "Adaptive vs static firewall"
+    assert isinstance(status["ip_security_analysis"], list)
     assert any(link["name"] == "OpenStack Install Guide" for link in platform["deployment_links"])
     assert "current_platform" in platform["linux_runtime"]
