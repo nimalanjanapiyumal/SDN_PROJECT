@@ -1,8 +1,18 @@
 import time
 from pathlib import Path
 
-from adaptive_cloud_platform.app import automation_start, automation_status, automation_stop, integrated_run, integrated_status, platform_validate
-from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest
+from adaptive_cloud_platform.app import (
+    automation_start,
+    automation_status,
+    automation_stop,
+    integrated_run,
+    integrated_status,
+    monitoring_start,
+    platform_validate,
+    sdn_start,
+    sdn_status,
+)
+from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, SdnLabStartRequest
 
 
 def test_integrated_run_chains_all_components():
@@ -31,6 +41,26 @@ def test_platform_validation_includes_sdn_and_observability_assets():
     assert validation["observability"]["files"]["grafana_dashboard"]["exists"] is True
     assert validation["sdn_lab"]["files"]["integrated_ryu_app"]["exists"] is True
     assert validation["sdn_lab"]["files"]["runbook"]["exists"] is True
+    assert "runtime" in validation
+
+
+def test_sdn_runtime_reports_topology_and_openflow():
+    status = sdn_status()
+
+    assert "topology" in status
+    assert "openflow" in status
+    assert "commands" in status
+    assert "views" in status
+
+
+def test_sdn_start_and_monitoring_start_return_runtime_payloads():
+    sdn_result = sdn_start(SdnLabStartRequest(scenario="mixed", duration_sec=60, interactive=False, link_mode="basic"))
+    monitoring_result = monitoring_start(MonitoringStackRequest())
+
+    assert "runtime" in sdn_result
+    assert "action" in sdn_result
+    assert "runtime" in monitoring_result
+    assert "action" in monitoring_result
 
 
 def test_sdn_lab_files_are_packaged():

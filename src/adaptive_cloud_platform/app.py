@@ -32,12 +32,14 @@ from adaptive_cloud_platform.models import (
     ContextUpdate,
     IntegratedAutomationRequest,
     IntegratedRunRequest,
+    MonitoringStackRequest,
     IntentRequest,
     PolicyEnforcementRequest,
     ResourcePlanRequest,
     SecurityActionRequest,
     SessionLoginRequest,
     SessionVerifyRequest,
+    SdnLabStartRequest,
 )
 from adaptive_cloud_platform.state import IntegratedState
 from adaptive_cloud_platform.adapters.execution_adapter import ExecutionAdapter
@@ -48,6 +50,7 @@ from adaptive_cloud_platform.services.monitoring_ml_service import MonitoringMLS
 from adaptive_cloud_platform.services.intent_controller_service import IntentControllerService
 from adaptive_cloud_platform.services.security_service import SecurityService
 from adaptive_cloud_platform.services.automation_service import SystemAutomationService
+from adaptive_cloud_platform.services.sdn_runtime_service import SdnRuntimeService
 
 runtime = get_runtime_config()
 state = IntegratedState()
@@ -60,6 +63,7 @@ intent_controller_service = IntentControllerService(state)
 security_service = SecurityService(state)
 integrated_run_history: list[dict] = []
 automation_service: SystemAutomationService | None = None
+sdn_runtime_service = SdnRuntimeService(Path.cwd(), api_url=runtime.controller_url, metrics_port=runtime.prometheus_exporter_port)
 
 app = FastAPI(title='Adaptive Cloud SDN Integrated API', version='1.0.0')
 FRONTEND_DIR = Path(__file__).resolve().parent / 'frontend'
@@ -91,6 +95,9 @@ METRIC_INTEGRATED_RUN_LATENCY = Gauge('adaptive_integrated_run_latency_ms', 'Lat
 METRIC_AUTOMATION_ENABLED = Gauge('adaptive_system_automation_enabled', 'Whether autonomous system automation is running')
 METRIC_AUTOMATION_CYCLES = Counter('adaptive_system_automation_cycles_total', 'Total autonomous system automation cycles', ['scenario', 'strategy'])
 METRIC_AUTOMATION_ERRORS = Counter('adaptive_system_automation_errors_total', 'Total autonomous system automation errors')
+METRIC_SDN_LAB_RUNNING = Gauge('adaptive_sdn_lab_running', 'Whether the Linux SDN lab runtime is active')
+METRIC_SDN_CONTROLLER_READY = Gauge('adaptive_sdn_controller_ready', 'Whether the OpenFlow controller port is reachable')
+METRIC_OPENFLOW_RULES = Gauge('adaptive_openflow_rules_active', 'Active OpenFlow-compatible rules across components')
 
 # Start a dedicated exporter endpoint for Prometheus scraping
 try:
@@ -158,6 +165,19 @@ def _probe_http(url: str, timeout: float = 1.5) -> dict:
 def _sync_optimizer_security_state() -> dict:
     rules = security_service.rules_status()
     return optimizer.sync_security_controls(rules.get('subject_access') or {})
+
+
+def _sdn_runtime_snapshot(
+    component_one: dict | None = None,
+    component_two: dict | None = None,
+    component_three: dict | None = None,
+    component_four: dict | None = None,
+) -> dict:
+    snapshot = sdn_runtime_service.status(component_one, component_two, component_three, component_four)
+    METRIC_SDN_LAB_RUNNING.set(1.0 if snapshot.get('lab', {}).get('running') else 0.0)
+    METRIC_SDN_CONTROLLER_READY.set(1.0 if snapshot.get('lab', {}).get('controller_probe', {}).get('reachable') else 0.0)
+    METRIC_OPENFLOW_RULES.set(float(snapshot.get('openflow', {}).get('total_rules') or 0.0))
+    return snapshot
 
 
 def _tool_status(names: list[str]) -> dict:
@@ -386,6 +406,7 @@ METRIC_AUTOMATION_ENABLED.set(0.0)
 def shutdown_background_services() -> None:
     if automation_service is not None:
         automation_service.stop()
+    sdn_runtime_service.shutdown()
 
 
 @app.post('/api/v1/intents')
@@ -490,16 +511,21 @@ def get_backends() -> dict:
 def integrated_status() -> dict:
     readiness = _lightweight_platform_readiness()
     _sync_optimizer_security_state()
-    c1_metrics = optimizer.component_status()['metrics']
-    c2_metrics = monitoring_ml_service.status()['metrics']
-    c3_metrics = intent_controller_service.status()['metrics']
-    c4_metrics = security_service.status()['metrics']
+    c1_status = optimizer.component_status()
+    c2_status = monitoring_ml_service.status()
+    c3_status = intent_controller_service.status()
+    c4_status = security_service.status()
+    sdn_runtime = _sdn_runtime_snapshot(c1_status, c2_status, c3_status, c4_status)
+    c1_metrics = c1_status['metrics']
+    c2_metrics = c2_status['metrics']
+    c3_metrics = c3_status['metrics']
+    c4_metrics = c4_status['metrics']
     operator_health = {
         'components_modelled': 4,
         'automatic_pipeline_ready': True,
         'observability_files_ready': readiness['monitoring']['files_ready'],
         'sdn_lab_files_ready': readiness['sdn_lab']['files_ready'],
-        'real_sdn_runtime_ready': readiness['sdn_lab']['real_dataplane_ready'],
+        'real_sdn_runtime_ready': bool(sdn_runtime.get('lab', {}).get('controller_probe', {}).get('reachable')) or readiness['sdn_lab']['real_dataplane_ready'],
     }
     return {
         'operator_health': operator_health,
@@ -508,6 +534,7 @@ def integrated_status() -> dict:
         'component_2': c2_metrics,
         'component_3': c3_metrics,
         'component_4': c4_metrics,
+        'sdn_runtime': sdn_runtime,
         'latest_decision': state.decisions[-1] if state.decisions else None,
         'active_policies': state.active_policies,
         'integrated_runs': {
@@ -574,6 +601,65 @@ def platform_validate() -> dict:
             'wsl': _wsl_status(),
             'mode': 'ready_for_linux_sdn_lab' if shutil.which('ryu-manager') and shutil.which('mn') else 'record_only_on_current_host',
         },
+        'runtime': _sdn_runtime_snapshot(
+            optimizer.component_status(),
+            monitoring_ml_service.status(),
+            intent_controller_service.status(),
+            security_service.status(),
+        ),
+    }
+
+
+@app.get('/api/v1/sdn/status')
+def sdn_status() -> dict:
+    _sync_optimizer_security_state()
+    return _sdn_runtime_snapshot(
+        optimizer.component_status(),
+        monitoring_ml_service.status(),
+        intent_controller_service.status(),
+        security_service.status(),
+    )
+
+
+@app.post('/api/v1/sdn/start')
+def sdn_start(payload: SdnLabStartRequest) -> dict:
+    result = sdn_runtime_service.start_lab(
+        scenario=payload.scenario,
+        duration_sec=payload.duration_sec,
+        interactive=payload.interactive,
+        link_mode=payload.link_mode,
+        start_monitoring=payload.start_monitoring,
+    )
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.post('/api/v1/sdn/stop')
+def sdn_stop() -> dict:
+    result = sdn_runtime_service.stop_lab()
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.post('/api/v1/monitoring/start')
+def monitoring_start(_: MonitoringStackRequest) -> dict:
+    result = sdn_runtime_service.start_monitoring()
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.post('/api/v1/monitoring/stop')
+def monitoring_stop() -> dict:
+    result = sdn_runtime_service.stop_monitoring()
+    return {
+        'action': result,
+        'runtime': sdn_status(),
     }
 
 
@@ -620,6 +706,12 @@ def component_one_platform() -> dict:
             'mininet_topology': 'sources/SDN_CLOUD_1-master/vm-a2-dataplane/mininet/topo_lb.py',
             'openstack_dashboard_support': 'sources/SDN_CLOUD_1-master/dashboard/flask_dashboard/app.py',
         },
+        'sdn_runtime': _sdn_runtime_snapshot(
+            optimizer.component_status(),
+            monitoring_ml_service.status(),
+            intent_controller_service.status(),
+            security_service.status(),
+        ),
         'note': 'Run the source Ryu/Mininet stack on Ubuntu/Linux for real OpenFlow packet-in and OFPFlowMod enforcement.',
     }
 
@@ -634,7 +726,14 @@ def component_two_status() -> dict:
 
 @app.get('/api/v1/component-2/platform')
 def component_two_platform() -> dict:
-    return monitoring_ml_service.platform_status()
+    platform_status = monitoring_ml_service.platform_status()
+    platform_status['live_views'] = _sdn_runtime_snapshot(
+        optimizer.component_status(),
+        monitoring_ml_service.status(),
+        intent_controller_service.status(),
+        security_service.status(),
+    ).get('views', [])
+    return platform_status
 
 
 @app.post('/api/v1/component-2/telemetry')

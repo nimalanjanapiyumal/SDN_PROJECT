@@ -8,6 +8,7 @@ const state = {
   componentThree: null,
   componentFour: null,
   integrated: null,
+  sdnRuntime: null,
   automation: null,
   latestIntegratedRun: null,
   platformValidation: null,
@@ -44,6 +45,20 @@ function cacheElements() {
     "stopAutomationBtn",
     "runIntegratedBtn",
     "validatePlatformBtn",
+    "sdnLabScenario",
+    "sdnLabDuration",
+    "sdnLinkMode",
+    "startSdnLabBtn",
+    "stopSdnLabBtn",
+    "validateSdnBtn",
+    "startMonitoringStackBtn",
+    "stopMonitoringStackBtn",
+    "sdnRuntimeSummary",
+    "sdnTopologyView",
+    "sdnOpenflowList",
+    "sdnMonitoringViews",
+    "sdnCommandList",
+    "sdnRuntimeJson",
     "combinedHealth",
     "combinedRuns",
     "combinedLatency",
@@ -137,6 +152,11 @@ function bindEvents() {
   els.stopAutomationBtn.addEventListener("click", stopSystemAutomation);
   els.runIntegratedBtn.addEventListener("click", runIntegratedModel);
   els.validatePlatformBtn.addEventListener("click", validatePlatformStack);
+  els.startSdnLabBtn.addEventListener("click", startSdnLab);
+  els.stopSdnLabBtn.addEventListener("click", stopSdnLab);
+  els.validateSdnBtn.addEventListener("click", validateSdnRuntime);
+  els.startMonitoringStackBtn.addEventListener("click", startMonitoringStack);
+  els.stopMonitoringStackBtn.addEventListener("click", stopMonitoringStack);
   els.autoRefresh.addEventListener("change", (event) => {
     state.autoRefresh = event.target.checked;
   });
@@ -173,6 +193,7 @@ function bindEvents() {
   els.componentFourPlatformBtn.addEventListener("click", showComponentFourPlatform);
   els.componentFourRulesBtn.addEventListener("click", showComponentFourRules);
   els.componentFourSubjectList.addEventListener("click", handleComponentFourSubjectAction);
+  els.sdnMonitoringViews.addEventListener("click", handleOpenRuntimeLink);
   document.querySelectorAll("[data-c2-scenario]").forEach((button) => {
     button.addEventListener("click", () => fillComponentTwoScenario(button.dataset.c2Scenario));
   });
@@ -204,6 +225,7 @@ async function refreshAll(options = {}) {
     state.componentThree = componentThree;
     state.componentFour = componentFour;
     state.integrated = integrated;
+    state.sdnRuntime = integrated?.sdn_runtime || null;
     state.automation = automation;
     renderState();
     setApiStatus("online", "Online");
@@ -253,6 +275,7 @@ function renderState() {
   renderComponentThree();
   renderComponentFour();
   renderIntegratedStatus();
+  renderSdnRuntime();
   renderComponentPanel();
   renderComponentNav();
   renderWorkspaceVisibility();
@@ -320,13 +343,14 @@ function renderWorkspaceVisibility() {
 
 function renderIntegratedStatus() {
   const integrated = state.integrated || {};
+  const sdnRuntime = state.sdnRuntime || integrated.sdn_runtime || {};
   const automation = state.automation || integrated.automation || {};
   const health = integrated.operator_health || {};
   const readiness = integrated.readiness || {};
   const runs = integrated.integrated_runs || {};
   const monitoringReady = readiness.monitoring?.files_ready;
   const sdnFilesReady = readiness.sdn_lab?.files_ready;
-  const realSdnReady = readiness.sdn_lab?.real_dataplane_ready;
+  const realSdnReady = sdnRuntime.lab?.controller_probe?.reachable || readiness.sdn_lab?.real_dataplane_ready;
   const latest = state.latestIntegratedRun || runs.latest || automation.last_result;
 
   els.combinedHealth.textContent = health.automatic_pipeline_ready ? "Ready" : "Check";
@@ -349,6 +373,143 @@ function renderIntegratedStatus() {
       real_sdn_runtime_ready: realSdnReady || false
     }, null, 2);
   }
+}
+
+function renderSdnRuntime() {
+  const runtime = state.sdnRuntime || state.integrated?.sdn_runtime || {};
+  const lab = runtime.lab || {};
+  const monitoring = runtime.monitoring || {};
+  const openflow = runtime.openflow || {};
+  const topology = runtime.topology || {};
+  const environment = runtime.environment || {};
+  const supported = Boolean(lab.supported);
+
+  if (!els.sdnRuntimeSummary) {
+    return;
+  }
+
+  els.sdnRuntimeSummary.innerHTML = `
+    <article class="sdn-status-card ${lab.running ? "live" : "idle"}">
+      <span>Lab</span>
+      <strong>${lab.running ? "Running" : (supported ? "Ready" : "Linux only")}</strong>
+      <em>${lab.controller_probe?.reachable ? "controller on 6653" : "controller offline"}</em>
+    </article>
+    <article class="sdn-status-card ${monitoring.prometheus?.reachable ? "live" : "idle"}">
+      <span>Prometheus</span>
+      <strong>${monitoring.prometheus?.reachable ? "Live" : "Down"}</strong>
+      <em>${monitoring.prometheus?.latency_ms ? `${Number(monitoring.prometheus.latency_ms).toFixed(0)} ms` : "127.0.0.1:9090"}</em>
+    </article>
+    <article class="sdn-status-card ${monitoring.grafana?.reachable ? "live" : "idle"}">
+      <span>Grafana</span>
+      <strong>${monitoring.grafana?.reachable ? "Live" : "Down"}</strong>
+      <em>${monitoring.grafana?.latency_ms ? `${Number(monitoring.grafana.latency_ms).toFixed(0)} ms` : "127.0.0.1:3000"}</em>
+    </article>
+    <article class="sdn-status-card ${openflow.total_rules ? "live" : "idle"}">
+      <span>OpenFlow</span>
+      <strong>${openflow.total_rules || 0} rules</strong>
+      <em>${environment.platform || "runtime"} / ${environment.linux_runtime ? "Linux" : "non-Linux"}</em>
+    </article>
+  `;
+
+  els.sdnTopologyView.innerHTML = renderSdnTopology(topology);
+  els.sdnOpenflowList.innerHTML = renderSdnOpenflow(openflow);
+  els.sdnMonitoringViews.innerHTML = renderSdnMonitoringViews(monitoring.views || []);
+  els.sdnCommandList.innerHTML = renderSdnCommands(runtime.commands || []);
+  els.sdnRuntimeJson.textContent = JSON.stringify(runtime, null, 2);
+
+  els.stopSdnLabBtn.disabled = !lab.running;
+}
+
+function renderSdnTopology(topology) {
+  const controller = topology.controller || {};
+  const switches = topology.switches || [];
+  const hosts = topology.hosts || [];
+  const services = topology.services || [];
+  const monitoringNodes = topology.monitoring_nodes || [];
+  return `
+    <div class="sdn-topology-stage">
+      <div class="sdn-topology-row controller-row">
+        ${renderSdnNode(controller.name || "Ryu", controller.state || "idle", `${controller.rules || 0} rules`)}
+      </div>
+      <div class="sdn-topology-row switch-row">
+        ${switches.map((item) => renderSdnNode(item.name, item.state, `${item.rules || 0} rules`)).join("")}
+      </div>
+      <div class="sdn-topology-row host-row">
+        ${hosts.map((item) => renderSdnNode(item.name, "live", item.ip)).join("")}
+      </div>
+      <div class="sdn-topology-row service-row">
+        ${services.map((item) => renderSdnNode(item.name, item.state || "idle", item.ip || item.note || "")).join("")}
+      </div>
+      <div class="sdn-topology-row monitor-row">
+        ${monitoringNodes.map((item) => renderSdnNode(item.name, item.state || "idle", item.url?.replace("http://", "") || "")).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSdnNode(title, stateName, detail) {
+  return `
+    <article class="sdn-node ${escapeHtml(String(stateName || "idle"))}">
+      <strong>${escapeHtml(title || "node")}</strong>
+      <span>${escapeHtml(detail || "")}</span>
+    </article>
+  `;
+}
+
+function renderSdnOpenflow(openflow) {
+  const counts = openflow.component_counts || {};
+  const rules = openflow.rules || [];
+  return `
+    <div class="sdn-openflow-summary">
+      <span>C1 ${counts.component_1 || 0}</span>
+      <span>C3 ${counts.component_3 || 0}</span>
+      <span>C4 ${counts.component_4 || 0}</span>
+    </div>
+    <div class="sdn-openflow-rule-list">
+      ${rules.length ? rules.map((rule) => `
+        <article class="sdn-openflow-rule">
+          <div>
+            <strong>${escapeHtml(rule.id || rule.action || "rule")}</strong>
+            <span>${escapeHtml(prettify(rule.component || "component"))} | ${escapeHtml(rule.switch || "fabric")}</span>
+          </div>
+          <div class="sdn-openflow-meta">
+            <span>${escapeHtml(prettify(rule.action || "forward"))}</span>
+            <span>${escapeHtml(rule.summary || "")}</span>
+          </div>
+        </article>
+      `).join("") : `<p class="empty">No OpenFlow-compatible rules are active yet.</p>`}
+    </div>
+  `;
+}
+
+function renderSdnMonitoringViews(views) {
+  if (!views.length) {
+    return `<p class="empty">No monitoring views configured.</p>`;
+  }
+  return views.map((view) => `
+    <article class="sdn-view-card ${view.reachable ? "live" : "idle"}">
+      <div>
+        <strong>${escapeHtml(view.name)}</strong>
+        <span>${escapeHtml(view.status || "unknown")}</span>
+      </div>
+      <div class="button-row">
+        <button class="mini-button" type="button" data-open-url="${escapeHtml(view.url || "")}">Open</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderSdnCommands(commands) {
+  if (!commands.length) {
+    return `<p class="empty">No runtime commands available.</p>`;
+  }
+  return commands.map((item) => `
+    <article class="sdn-command-card">
+      <strong>${escapeHtml(item.name || "Command")}</strong>
+      <span>${escapeHtml(item.description || "")}</span>
+      <code>${escapeHtml(item.command || "")}</code>
+    </article>
+  `).join("");
 }
 
 function renderComponentPanel() {
@@ -779,6 +940,97 @@ async function validatePlatformStack() {
   }
 }
 
+async function startSdnLab() {
+  const payload = {
+    scenario: valueOf("sdnLabScenario") || "mixed",
+    duration_sec: Number(valueOf("sdnLabDuration")) || 90,
+    interactive: false,
+    link_mode: valueOf("sdnLinkMode") || "basic",
+    start_monitoring: true
+  };
+  try {
+    els.startSdnLabBtn.disabled = true;
+    const result = await apiRequest("/api/v1/sdn/start", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.sdnRuntime = result.runtime || null;
+    const action = result.action || {};
+    showToast(action.launched ? `SDN lab started: ${prettify(payload.scenario)}` : (action.reason || action.status || "Manual Linux runtime required"));
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.startSdnLabBtn.disabled = false;
+  }
+}
+
+async function stopSdnLab() {
+  try {
+    els.stopSdnLabBtn.disabled = true;
+    const result = await apiRequest("/api/v1/sdn/stop", {
+      method: "POST",
+      body: "{}"
+    });
+    state.sdnRuntime = result.runtime || null;
+    showToast(result.action?.stopped ? "SDN lab stopped" : "SDN lab is not running");
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.stopSdnLabBtn.disabled = false;
+  }
+}
+
+async function validateSdnRuntime() {
+  try {
+    els.validateSdnBtn.disabled = true;
+    const result = await apiRequest("/api/v1/sdn/status");
+    state.sdnRuntime = result;
+    els.sdnRuntimeJson.textContent = JSON.stringify(result, null, 2);
+    showToast(result.lab?.controller_probe?.reachable ? "SDN controller reachable" : "SDN runtime checked");
+    renderSdnRuntime();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.validateSdnBtn.disabled = false;
+  }
+}
+
+async function startMonitoringStack() {
+  try {
+    els.startMonitoringStackBtn.disabled = true;
+    const result = await apiRequest("/api/v1/monitoring/start", {
+      method: "POST",
+      body: JSON.stringify({ start_prometheus: true, start_grafana: true })
+    });
+    state.sdnRuntime = result.runtime || null;
+    showToast(result.action?.started ? "Prometheus and Grafana started" : (result.action?.reason || result.action?.status || "Monitoring start checked"));
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.startMonitoringStackBtn.disabled = false;
+  }
+}
+
+async function stopMonitoringStack() {
+  try {
+    els.stopMonitoringStackBtn.disabled = true;
+    const result = await apiRequest("/api/v1/monitoring/stop", {
+      method: "POST",
+      body: "{}"
+    });
+    state.sdnRuntime = result.runtime || null;
+    showToast(result.action?.stopped ? "Monitoring stopped" : (result.action?.reason || result.action?.status || "Monitoring stop checked"));
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    els.stopMonitoringStackBtn.disabled = false;
+  }
+}
+
 async function startSystemAutomation() {
   const preferredScenario = valueOf("integratedScenario") || "mixed";
   const intervalSec = Number(valueOf("automationInterval")) || 20;
@@ -1202,6 +1454,17 @@ async function handleComponentFourSubjectAction(event) {
     await refreshAll({ quiet: true });
   } catch (error) {
     showToast(error.message, true);
+  }
+}
+
+function handleOpenRuntimeLink(event) {
+  const button = event.target.closest("[data-open-url]");
+  if (!button) {
+    return;
+  }
+  const url = button.dataset.openUrl;
+  if (url) {
+    window.open(url, "_blank", "noopener");
   }
 }
 

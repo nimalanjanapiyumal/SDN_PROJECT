@@ -2,7 +2,7 @@
   "id": null,
   "title": "Adaptive Cloud SDN - Integrated Operations",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "tags": ["sdn", "cloud", "adaptive", "components-1-4"],
   "time": {
@@ -96,6 +96,24 @@
         {"expr": "adaptive_component4_latest_risk_score", "legendFormat": "Auth risk"},
         {"expr": "adaptive_component4_mitigation_latency_ms", "legendFormat": "Mitigation ms"}
       ]
+    },
+    {
+      "type": "stat",
+      "title": "SDN Lab Runtime",
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 23},
+      "targets": [{"expr": "adaptive_sdn_lab_running"}]
+    },
+    {
+      "type": "stat",
+      "title": "Controller Ready",
+      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 23},
+      "targets": [{"expr": "adaptive_sdn_controller_ready"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "OpenFlow Active Rules",
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 23},
+      "targets": [{"expr": "adaptive_openflow_rules_active"}]
     }
   ]
 }

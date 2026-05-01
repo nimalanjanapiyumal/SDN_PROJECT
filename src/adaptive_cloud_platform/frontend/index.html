@@ -125,6 +125,68 @@
           </details>
         </section>
 
+        <section class="sdn-ops-section" data-workspace="component-1" aria-label="SDN runtime and observability">
+          <div class="runtime-panel">
+            <div class="section-title">
+              <p class="eyebrow">Linux SDN runtime</p>
+              <h2>Lab Control</h2>
+            </div>
+            <div class="sdn-toolbar">
+              <select class="scenario-select" id="sdnLabScenario" aria-label="SDN lab scenario">
+                <option value="mixed">Mixed</option>
+                <option value="normal">Normal</option>
+                <option value="congestion">Congestion</option>
+                <option value="ddos">DDoS</option>
+                <option value="port_scan">Port Scan</option>
+              </select>
+              <select class="scenario-select" id="sdnLabDuration" aria-label="SDN lab duration">
+                <option value="60">60 sec</option>
+                <option value="90" selected>90 sec</option>
+                <option value="180">180 sec</option>
+              </select>
+              <select class="scenario-select" id="sdnLinkMode" aria-label="SDN link mode">
+                <option value="basic" selected>Basic links</option>
+                <option value="shaped">Shaped links</option>
+              </select>
+              <button class="secondary-button" id="startSdnLabBtn" type="button">Start SDN</button>
+              <button class="secondary-button subtle" id="stopSdnLabBtn" type="button">Stop SDN</button>
+              <button class="secondary-button" id="validateSdnBtn" type="button">Validate</button>
+              <button class="secondary-button" id="startMonitoringStackBtn" type="button">Start Obs</button>
+              <button class="secondary-button subtle" id="stopMonitoringStackBtn" type="button">Stop Obs</button>
+            </div>
+            <div id="sdnRuntimeSummary" class="sdn-runtime-summary"></div>
+          </div>
+
+          <div class="runtime-panel">
+            <div class="section-title">
+              <p class="eyebrow">OpenFlow topology</p>
+              <h2>Network View</h2>
+            </div>
+            <div id="sdnTopologyView" class="sdn-topology-view"></div>
+          </div>
+
+          <div class="runtime-panel">
+            <div class="section-title">
+              <p class="eyebrow">Rule sync</p>
+              <h2>OpenFlow Rules</h2>
+            </div>
+            <div id="sdnOpenflowList" class="sdn-openflow-list"></div>
+          </div>
+
+          <div class="runtime-panel">
+            <div class="section-title">
+              <p class="eyebrow">Prometheus and Grafana</p>
+              <h2>Views</h2>
+            </div>
+            <div id="sdnMonitoringViews" class="sdn-monitoring-views"></div>
+            <div id="sdnCommandList" class="sdn-command-list"></div>
+            <details class="payload-drawer">
+              <summary>Runtime</summary>
+              <pre id="sdnRuntimeJson">{}</pre>
+            </details>
+          </div>
+        </section>
+
         <section class="kpi-grid" data-workspace="component-1" aria-label="Component 1 runtime metrics">
           <article class="kpi-card primary">
             <span>RR Decisions</span>

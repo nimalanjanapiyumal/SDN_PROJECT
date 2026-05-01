@@ -7,7 +7,7 @@ import time
 from typing import Iterable, List
 
 from mininet.cli import CLI
-from mininet.link import TCLink
+from mininet.link import Link, TCLink
 from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import OVSKernelSwitch, RemoteController
@@ -15,7 +15,10 @@ from mininet.topo import Topo
 
 
 class AdaptiveCloudTopo(Topo):
-    def build(self) -> None:
+    def build(self, link_mode: str = "basic") -> None:
+        link_cls = TCLink if str(link_mode).lower() == "shaped" else Link
+        link_kwargs = (lambda bw, delay: {"cls": link_cls, "bw": bw, "delay": delay}) if link_cls is TCLink else (lambda bw, delay: {"cls": link_cls})
+
         s1 = self.addSwitch("s1", protocols="OpenFlow13")
         s2 = self.addSwitch("s2", protocols="OpenFlow13")
         s3 = self.addSwitch("s3", protocols="OpenFlow13")
@@ -27,17 +30,17 @@ class AdaptiveCloudTopo(Topo):
         h4 = self.addHost("h4", ip="10.0.0.4/24", mac="00:00:00:00:00:04")
 
         # Host-facing links.
-        self.addLink(h1, s1, cls=TCLink, bw=100, delay="1ms")
-        self.addLink(h2, s1, cls=TCLink, bw=100, delay="1ms")
-        self.addLink(h3, s1, cls=TCLink, bw=100, delay="1ms")
-        self.addLink(h4, s4, cls=TCLink, bw=100, delay="1ms")
+        self.addLink(h1, s1, **link_kwargs(100, "1ms"))
+        self.addLink(h2, s1, **link_kwargs(100, "1ms"))
+        self.addLink(h3, s1, **link_kwargs(100, "1ms"))
+        self.addLink(h4, s4, **link_kwargs(100, "1ms"))
 
         # Redundant SDN fabric.
-        self.addLink(s1, s2, cls=TCLink, bw=20, delay="5ms")
-        self.addLink(s2, s4, cls=TCLink, bw=20, delay="5ms")
-        self.addLink(s1, s3, cls=TCLink, bw=20, delay="5ms")
-        self.addLink(s3, s4, cls=TCLink, bw=20, delay="5ms")
-        self.addLink(s2, s3, cls=TCLink, bw=15, delay="3ms")
+        self.addLink(s1, s2, **link_kwargs(20, "5ms"))
+        self.addLink(s2, s4, **link_kwargs(20, "5ms"))
+        self.addLink(s1, s3, **link_kwargs(20, "5ms"))
+        self.addLink(s3, s4, **link_kwargs(20, "5ms"))
+        self.addLink(s2, s3, **link_kwargs(15, "3ms"))
 
 
 def _start_background(host, label: str, command: str) -> None:
@@ -204,12 +207,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=int, default=90, help="Traffic duration in seconds.")
     parser.add_argument("--cli", action="store_true", help="Drop into Mininet CLI after startup.")
     parser.add_argument("--foreground", action="store_true", help="Keep running until duration expires.")
+    parser.add_argument("--link-mode", choices=["basic", "shaped"], default="basic", help="Use basic links for stable demos or TCLink shaping for bandwidth/delay emulation.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    topo = AdaptiveCloudTopo()
+    topo = AdaptiveCloudTopo(link_mode=args.link_mode)
     net = Mininet(
         topo=topo,
         controller=None,
@@ -233,6 +237,7 @@ def main() -> None:
         info(f"*** Scenario '{args.scenario}' launched for {args.duration} seconds\n")
 
         if args.cli:
+            info("*** Example CLI command: h1 iperf3 -c 10.0.0.4 -t 5\n")
             CLI(net)
         elif args.foreground:
             time.sleep(args.duration)

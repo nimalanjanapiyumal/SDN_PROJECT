@@ -22,6 +22,9 @@ def test_frontend_assets_exist():
     assert "componentFourServerAnalysis" in content
     assert "componentFourRuleStatus" in content
     assert "componentFourRuleList" in content
+    assert "sdnTopologyView" in content
+    assert "sdnOpenflowList" in content
+    assert "sdnMonitoringViews" in content
 
 
 def test_favicon_route_exists():

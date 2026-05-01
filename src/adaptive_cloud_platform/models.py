@@ -205,6 +205,19 @@ class IntegratedAutomationRequest(BaseModel):
     max_cycles: Optional[int] = Field(default=None, ge=1, le=10000)
 
 
+class SdnLabStartRequest(BaseModel):
+    scenario: str = Field(default="mixed")
+    duration_sec: int = Field(default=90, ge=10, le=3600)
+    interactive: bool = False
+    link_mode: str = Field(default="basic")
+    start_monitoring: bool = False
+
+
+class MonitoringStackRequest(BaseModel):
+    start_prometheus: bool = True
+    start_grafana: bool = True
+
+
 class PolicyEnforcementRequest(BaseModel):
     type: str
     src_ip: Optional[str] = None
