@@ -122,6 +122,7 @@ class SecurityService:
         reason: str | None = None,
         severity: int = 3,
         duration_sec: Optional[int] = None,
+        targets: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "source": "security",
@@ -132,6 +133,8 @@ class SecurityService:
         }
         if duration_sec is not None:
             payload["duration_sec"] = int(duration_sec)
+        if targets:
+            payload["targets"] = [str(item) for item in targets if str(item).strip()]
         return payload
 
     def create_session(self, user_id: str, ip: str, password: str) -> Dict[str, Any]:
@@ -211,6 +214,7 @@ class SecurityService:
         severity = int(payload.get("severity") or 3)
         reason = payload.get("reason") or action
         duration_sec = max(30, int(payload.get("duration_sec") or 300))
+        targets = [str(item) for item in (payload.get("targets") or []) if str(item).strip()]
         expires_at = None
 
         if action in {"block", "quarantine"}:
@@ -220,6 +224,7 @@ class SecurityService:
                 "severity": severity,
                 "expires_at": None,
                 "updated_at": time.time(),
+                "targets": [],
             }
             self.blocked_subjects.add(subject)
             if action == "quarantine":
@@ -234,6 +239,7 @@ class SecurityService:
                 "severity": severity,
                 "expires_at": expires_at,
                 "updated_at": time.time(),
+                "targets": [],
             }
             self.blocked_subjects.add(subject)
             self.quarantined_subjects.discard(subject)
@@ -247,6 +253,7 @@ class SecurityService:
                     "severity": severity,
                     "expires_at": None,
                     "updated_at": time.time(),
+                    "targets": targets,
                 }
             else:
                 self.subject_access.pop(subject, None)
@@ -261,7 +268,7 @@ class SecurityService:
         if action == "allow":
             self._mark_session_by_subject(subject, "active")
 
-        rule = self._security_rule(action, subject, severity, reason, expires_at=expires_at)
+        rule = self._security_rule(action, subject, severity, reason, expires_at=expires_at, targets=targets)
         latency_ms = (time.perf_counter() - started_at) * 1000.0
         self.mitigation_latencies_ms.append(latency_ms)
         self.mitigation_latencies_ms = self.mitigation_latencies_ms[-200:]
@@ -274,6 +281,7 @@ class SecurityService:
             "rule": rule,
             "reason": reason,
             "expires_at": expires_at,
+            "targets": targets,
             "ts": time.time(),
         }
         self.enforcement_events.append(event)
@@ -285,6 +293,7 @@ class SecurityService:
             "rule": rule,
             "latency_ms": round(latency_ms, 3),
             "expires_at": expires_at,
+            "targets": targets,
             "event": event,
         }
 
@@ -341,9 +350,24 @@ class SecurityService:
         dst_zone = self.zone_for_ip(dst_ip)
         control = self.subject_access.get(src_ip)
         if control and control.get("action") == "allow":
-            allowed = True
-            reason = "manual allow override"
-            security_action = None
+            allowed_targets = [str(item) for item in (control.get("targets") or []) if str(item).strip()]
+            if allowed_targets:
+                allowed = dst_ip in allowed_targets
+                reason = (
+                    f"host allowlist matched for {dst_ip}"
+                    if allowed
+                    else "default deny: destination is not in the selected server allowlist"
+                )
+                security_action = None if allowed else self.build_action(
+                    "quarantine",
+                    src_ip,
+                    reason,
+                    4,
+                )
+            else:
+                allowed = True
+                reason = "manual allow override"
+                security_action = None
         elif control and control.get("action") in {"block", "quarantine", "temporary_block"}:
             allowed = False
             reason = self._subject_control_reason(src_ip, control)
@@ -617,6 +641,7 @@ class SecurityService:
             },
             "attack_view": attack_view,
             "incident_feed": incident_feed,
+            "latest_rule_message": self._latest_rule_message(),
             "available_subjects": available_subjects,
             "ip_security_analysis": ip_security_analysis,
             "sessions": [session.as_dict() for session in self.sessions.values()],
@@ -639,6 +664,7 @@ class SecurityService:
             "blocked_subjects": sorted(self.blocked_subjects),
             "quarantined_subjects": sorted(self.quarantined_subjects),
             "subject_access": self.subject_access,
+            "latest_rule_message": self._latest_rule_message(),
         }
 
     def active_rules(self) -> List[Dict[str, Any]]:
@@ -909,7 +935,9 @@ class SecurityService:
         severity: int,
         reason: str,
         expires_at: Optional[float] = None,
+        targets: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+        cleaned_targets = [str(item) for item in (targets or []) if str(item).strip()]
         if action in {"block", "quarantine", "temporary_block"}:
             match = {"eth_type": 0x0800, "ipv4_src": subject}
             actions = [{"type": "DROP"}]
@@ -925,6 +953,9 @@ class SecurityService:
             actions = [{"type": "OUTPUT", "port": "NORMAL"}]
             priority = 1000
             semantic_action = "release_subject"
+            if action == "allow" and cleaned_targets:
+                match["allowed_destinations"] = cleaned_targets
+                semantic_action = "allow_selected_destinations"
         else:
             match = {"subject": subject}
             actions = [{"type": "OBSERVE"}]
@@ -938,7 +969,7 @@ class SecurityService:
             match=match,
             actions=actions,
             semantic_action=semantic_action,
-            description=reason,
+            description=self._rule_description(reason, cleaned_targets),
             expires_at=expires_at,
         )
 
@@ -1057,6 +1088,7 @@ class SecurityService:
                     "status": self._subject_status(ip),
                     "override": control.get("action"),
                     "expires_at": control.get("expires_at"),
+                    "allowed_targets": control.get("targets") or [],
                 }
         for session in self.sessions.values():
             entry = subjects.setdefault(session.ip_address, {
@@ -1066,6 +1098,7 @@ class SecurityService:
                 "status": self._subject_status(session.ip_address),
                 "override": None,
                 "expires_at": None,
+                "allowed_targets": [],
             })
             entry["user_id"] = session.user_id
             entry["session_status"] = session.status
@@ -1074,6 +1107,7 @@ class SecurityService:
             control = self.subject_access.get(session.ip_address, {})
             entry["override"] = control.get("action")
             entry["expires_at"] = control.get("expires_at")
+            entry["allowed_targets"] = control.get("targets") or []
         return sorted(subjects.values(), key=lambda item: (str(item.get("zone") or ""), str(item.get("ip") or "")))
 
     def _subject_status(self, ip: str, session_status: Optional[str] = None) -> str:
@@ -1131,6 +1165,7 @@ class SecurityService:
                 "controller_action": action or "monitor",
                 "reason": reason,
                 "expires_at": control.get("expires_at"),
+                "allowed_targets": control.get("targets") or [],
                 "indicator_blocked": bool(indicator.blocked) if indicator is not None else False,
                 "indicator_type": indicator.threat_type if indicator is not None else None,
                 "user_id": subject.get("user_id"),
@@ -1190,6 +1225,7 @@ class SecurityService:
                 "reason": event.get("reason") or (event.get("rule") or {}).get("description"),
                 "ts": event.get("ts"),
                 "expires_at": event.get("expires_at"),
+                "targets": event.get("targets") or [],
             })
         for event in self.cti_events[-8:]:
             payload = event.get("payload") or {}
@@ -1212,6 +1248,20 @@ class SecurityService:
         if score >= 35.0:
             return "medium"
         return "low"
+
+    def _rule_description(self, reason: str, targets: List[str]) -> str:
+        if not targets:
+            return reason
+        return f"{reason} | allow -> {', '.join(targets)}"
+
+    def _latest_rule_message(self) -> Optional[str]:
+        if not self.security_rules:
+            return None
+        rule = self.security_rules[-1]
+        action = str(rule.get("action") or "rule").replace("_", " ")
+        subject = str(rule.get("subject") or "subject")
+        description = str(rule.get("description") or "")
+        return f"Rule added: {action} for {subject}. {description}".strip()
 
     def _probe_http(self, url: str, timeout: float = 1.5) -> Dict[str, Any]:
         started = time.time()

@@ -115,6 +115,8 @@ function cacheElements() {
     "componentFourPlatformBtn",
     "componentFourRulesBtn",
     "componentFourOutputJson",
+    "componentFourRuleStatus",
+    "componentFourRuleList",
     "componentFourAttackBanner",
     "componentFourIncidentList",
     "componentFourSubjectList",
@@ -588,6 +590,8 @@ function renderComponentFour() {
   const incidents = c4.incident_feed || [];
   const subjects = c4.available_subjects || [];
   const analyses = c4.ip_security_analysis || [];
+  const recentRules = c4.recent_rules || [];
+  const latestRuleMessage = c4.latest_rule_message || "";
   els.c4SessionCount.textContent = metrics.sessions || 0;
   els.c4SessionRisk.textContent = `${metrics.suspicious_sessions || 0} suspicious`;
   els.c4QuarantineCount.textContent = metrics.temporary_blocks || metrics.quarantined_subjects || metrics.quarantined_sessions || 0;
@@ -598,7 +602,9 @@ function renderComponentFour() {
   els.componentFourAttackBanner.innerHTML = renderComponentFourAttackBanner(attackView);
   els.componentFourAttackBanner.className = `attack-banner ${escapeHtml(String(attackView.status || "monitoring"))}`;
   els.componentFourIncidentList.innerHTML = renderComponentFourIncidentList(incidents);
-  els.componentFourSubjectList.innerHTML = renderComponentFourSubjectList(subjects);
+  els.componentFourSubjectList.innerHTML = renderComponentFourSubjectList(subjects, subjects);
+  els.componentFourRuleStatus.innerHTML = renderComponentFourRuleStatus(latestRuleMessage);
+  els.componentFourRuleList.innerHTML = renderComponentFourRuleList(recentRules);
   els.componentFourServerAnalysis.innerHTML = renderComponentFourServerAnalysis(analyses, state.componentOne?.backends || []);
   els.componentFourObjectiveGrid.innerHTML = renderComponentFourObjectives(objectives, functionalRequirements);
   els.componentFourGraphGrid.innerHTML = renderComponentFourGraphs(graphs);
@@ -612,11 +618,13 @@ function renderComponentFour() {
     benchmark: c4.benchmark || {},
     attack_view: attackView,
     incident_feed: incidents,
+    latest_rule_message: latestRuleMessage,
     available_subjects: subjects,
     ip_security_analysis: analyses,
     platform,
     sessions: c4.sessions || [],
     active_rules: c4.active_rules || [],
+    recent_rules: recentRules,
     indicators: (c4.indicators || []).slice(0, 8),
     recent_flow_evaluations: c4.recent_flow_evaluations || []
   }, null, 2);
@@ -1050,7 +1058,8 @@ async function evaluateComponentFourSecurity(event) {
         body: JSON.stringify(alertPayload)
       })
     ]);
-    showToast(`${flowResult.allowed ? "Allowed" : "Blocked"} flow, alert ${alertResult.should_block ? "blocked" : "observed"}`);
+    const createdRule = extractSecurityRule(alertResult) || extractSecurityRule(flowResult);
+    showToast(createdRule ? `Rule added: ${prettify(createdRule.action)} ${createdRule.subject}` : `${flowResult.allowed ? "Allowed" : "Blocked"} flow, alert ${alertResult.should_block ? "blocked" : "observed"}`);
     els.componentFourOutputJson.textContent = JSON.stringify({ flowResult, alertResult }, null, 2);
     await refreshAll({ quiet: true });
   } catch (error) {
@@ -1096,7 +1105,8 @@ async function blockComponentFourIoc() {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    showToast(`Blocked ${payload.value}`);
+    const createdRule = extractSecurityRule(result);
+    showToast(createdRule ? `Rule added: ${prettify(createdRule.action)} ${createdRule.subject}` : `Blocked ${payload.value}`);
     els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
     await refreshAll({ quiet: true });
   } catch (error) {
@@ -1160,29 +1170,46 @@ async function handleComponentFourSubjectAction(event) {
   if (!button) {
     return;
   }
+  const row = button.closest(".subject-row");
   const subject = button.dataset.c4Subject;
   const action = button.dataset.c4Action;
+  const targets = action === "allow"
+    ? Array.from((row?.querySelector(`[data-c4-targets-for="${subject}"]`) || { selectedOptions: [] }).selectedOptions || []).map((option) => option.value)
+    : [];
+  if (action === "allow" && !targets.length) {
+    showToast("Select at least one server for this host allow rule", true);
+    return;
+  }
   const payload = {
     source: "component-4-gui",
     subject,
     action,
     severity: action === "allow" ? 2 : 4,
     reason: action === "allow"
-      ? "manual micro-segmentation allow from GUI"
+      ? "manual micro-segmentation allowlist from GUI"
       : (action === "temporary_block" ? "temporary anomaly block from GUI" : "manual micro-segmentation deny from GUI"),
-    duration_sec: action === "temporary_block" ? 300 : null
+    duration_sec: action === "temporary_block" ? 300 : null,
+    targets
   };
   try {
     const result = await apiRequest("/api/v1/component-4/access", {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    showToast(`${prettify(action)} applied to ${subject}`);
+    const createdRule = extractSecurityRule(result);
+    showToast(createdRule ? `Rule added: ${prettify(createdRule.action)} ${createdRule.subject}` : `${prettify(action)} applied to ${subject}`);
     els.componentFourOutputJson.textContent = JSON.stringify(result, null, 2);
     await refreshAll({ quiet: true });
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+function extractSecurityRule(result) {
+  return result?.component_4_enforcement?.component_4_enforcement?.rule
+    || result?.component_4_enforcement?.rule
+    || result?.rule
+    || null;
 }
 
 function activateTab(name) {
@@ -1499,7 +1526,7 @@ function renderComponentFourIncidentList(incidents) {
   `).join("");
 }
 
-function renderComponentFourSubjectList(subjects) {
+function renderComponentFourSubjectList(subjects, allSubjects = []) {
   if (!subjects.length) {
     return `<p class="empty">No hosts available.</p>`;
   }
@@ -1516,11 +1543,55 @@ function renderComponentFourSubjectList(subjects) {
         <span>Override: ${escapeHtml(prettify(subject.override || "none"))}</span>
         ${subject.expires_at ? `<span>Until ${escapeHtml(formatTime(subject.expires_at))}</span>` : ""}
         ${subject.anomaly_score !== undefined ? `<span>Risk ${escapeHtml(String(subject.anomaly_score))}</span>` : ""}
+        ${subject.allowed_targets?.length ? `<span>Allow to ${escapeHtml(subject.allowed_targets.join(", "))}</span>` : ""}
       </div>
+      <label class="subject-target-picker">
+        <span>Allowed servers</span>
+        <select multiple size="4" data-c4-targets-for="${escapeHtml(subject.ip || "")}">
+          ${allSubjects
+            .filter((candidate) => candidate.ip && candidate.ip !== subject.ip)
+            .map((candidate) => `
+              <option value="${escapeHtml(candidate.ip)}" ${subject.allowed_targets?.includes(candidate.ip) ? "selected" : ""}>
+                ${escapeHtml(candidate.label || candidate.ip)} (${escapeHtml(candidate.ip)})
+              </option>
+            `).join("")}
+        </select>
+      </label>
       <div class="subject-actions">
-        <button class="mini-button" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="allow">Allow</button>
+        <button class="mini-button" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="allow">Allow Selected</button>
         <button class="mini-button danger" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="block">Deny</button>
         <button class="mini-button warning" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="temporary_block">Temp Block</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderComponentFourRuleStatus(message) {
+  if (!message) {
+    return `<p class="empty">No security rule added yet.</p>`;
+  }
+  return `
+    <div class="rule-status-copy">
+      <strong>Rule Added</strong>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function renderComponentFourRuleList(rules) {
+  const items = (rules || []).slice().reverse().slice(0, 6);
+  if (!items.length) {
+    return `<p class="empty">Rule activity will appear here.</p>`;
+  }
+  return items.map((rule) => `
+    <article class="rule-item ${escapeHtml(String(rule.action || "observe"))}">
+      <div>
+        <strong>${escapeHtml(prettify(rule.action || "rule"))}</strong>
+        <span>${escapeHtml(rule.subject || rule.name || "subject")}</span>
+      </div>
+      <div class="incident-meta">
+        <em>${escapeHtml(rule.id || "rule")}</em>
+        <small>${escapeHtml(rule.description || "")}</small>
       </div>
     </article>
   `).join("");

@@ -1309,6 +1309,30 @@ textarea {
   margin-top: 1rem;
 }
 
+.rule-status-banner {
+  margin-top: 1rem;
+  padding: 0.82rem;
+  background: #f4faf6;
+  border: 1px solid rgba(15, 159, 142, 0.2);
+  border-radius: 8px;
+}
+
+.rule-status-copy strong,
+.rule-status-copy p {
+  display: block;
+}
+
+.rule-status-copy p {
+  margin: 0.35rem 0 0;
+  color: #355048;
+}
+
+.rule-activity-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
 .server-analysis-list {
   display: grid;
   gap: 0.75rem;
@@ -1316,7 +1340,8 @@ textarea {
 }
 
 .incident-item,
-.subject-row {
+.subject-row,
+.rule-item {
   min-width: 0;
   padding: 0.82rem;
   background: #f8faf5;
@@ -1339,9 +1364,28 @@ textarea {
   justify-content: space-between;
 }
 
+.rule-item {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .incident-item.blocked {
   border-color: rgba(216, 93, 75, 0.5);
   background: #fff7f5;
+}
+
+.rule-item.block,
+.rule-item.quarantine,
+.rule-item.temporary_block {
+  border-color: rgba(216, 93, 75, 0.5);
+  background: #fff7f5;
+}
+
+.rule-item.allow {
+  border-color: rgba(15, 159, 142, 0.25);
+  background: #f4faf6;
 }
 
 .server-analysis-card.offline {
@@ -1358,7 +1402,8 @@ textarea {
 .subject-main,
 .subject-meta,
 .subject-actions,
-.incident-meta {
+.incident-meta,
+.rule-item > div {
   display: flex;
   gap: 0.6rem;
   align-items: center;
@@ -1401,6 +1446,21 @@ textarea {
   margin-top: 0.7rem;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.subject-target-picker {
+  margin-top: 0.7rem;
+}
+
+.subject-target-picker span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.subject-target-picker select {
+  min-height: 112px;
 }
 
 .server-analysis-card p {

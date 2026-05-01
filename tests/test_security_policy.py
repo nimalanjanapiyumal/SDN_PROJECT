@@ -67,6 +67,25 @@ def test_manual_allow_override_can_open_micro_segmentation_flow():
     assert result['reason'] == 'manual allow override'
 
 
+def test_host_allowlist_only_permits_selected_servers():
+    service = SecurityService()
+    service.enforce_action({
+        'action': 'allow',
+        'subject': '10.0.0.1',
+        'severity': 2,
+        'reason': 'demo allowlist',
+        'targets': ['10.0.0.7', '10.0.0.12'],
+    })
+
+    allowed = service.evaluate_flow('10.0.0.1', '10.0.0.12', 3306, 'tcp')
+    denied = service.evaluate_flow('10.0.0.1', '10.0.0.13', 3306, 'tcp')
+
+    assert allowed['allowed'] is True
+    assert allowed['reason'] == 'host allowlist matched for 10.0.0.12'
+    assert denied['allowed'] is False
+    assert denied['reason'] == 'default deny: destination is not in the selected server allowlist'
+
+
 def test_cti_alert_blocks_known_indicator():
     service = SecurityService()
 

@@ -145,6 +145,7 @@ class SecurityActionRequest(BaseModel):
     severity: int = 3
     reason: Optional[str] = None
     duration_sec: Optional[int] = None
+    targets: List[str] = Field(default_factory=list)
 
 
 class ComponentFourSegmentationPolicyRequest(BaseModel):

@@ -70,3 +70,16 @@ def test_component_four_access_endpoint_supports_temporary_block():
 
     assert result["accepted"] is True
     assert result["component_4_enforcement"]["action"] == "temporary_block"
+
+
+def test_component_four_access_endpoint_supports_allow_targets():
+    result = component_four_access(SecurityActionRequest(
+        action="allow",
+        subject="10.0.0.1",
+        severity=2,
+        reason="demo allowlist",
+        targets=["10.0.0.7", "10.0.0.12"],
+    ))
+
+    assert result["accepted"] is True
+    assert result["component_4_enforcement"]["rule"]["match"]["allowed_destinations"] == ["10.0.0.7", "10.0.0.12"]
