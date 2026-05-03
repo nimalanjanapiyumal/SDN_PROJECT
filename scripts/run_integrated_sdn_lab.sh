@@ -15,14 +15,17 @@ mkdir -p "$(dirname "$RYU_LOG")"
 command -v mn >/dev/null 2>&1 || { echo "Mininet is required. Install mininet and Open vSwitch first."; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required."; exit 1; }
 
-if ! command -v ryu-manager >/dev/null 2>&1; then
-  if ! python3 - <<'PY' >/dev/null 2>&1
+RYU_RUNTIME="missing"
+if python3 - <<'PY' >/dev/null 2>&1
 import ryu  # noqa: F401
 PY
-  then
-    echo "Ryu is required. Install ryu-manager or the Python ryu package first."
-    exit 1
-  fi
+then
+  RYU_RUNTIME="python-module"
+elif command -v ryu-manager >/dev/null 2>&1; then
+  RYU_RUNTIME="wrapper"
+else
+  echo "Ryu is required. Install ryu-manager or the Python ryu package first."
+  exit 1
 fi
 
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
@@ -33,8 +36,9 @@ export EVENTLET_NO_GREENDNS="${EVENTLET_NO_GREENDNS:-yes}"
 echo "Validating integrated Ryu controller app syntax"
 python3 -m py_compile "$RYU_APP"
 
-echo "Validating integrated Ryu controller imports"
-python3 - <<PY
+if [[ "$RYU_RUNTIME" == "python-module" ]]; then
+  echo "Validating integrated Ryu controller imports with python3"
+  python3 - <<PY
 import importlib.util
 import sys
 
@@ -47,6 +51,10 @@ if controller is None:
     raise SystemExit("IntegratedAdaptiveCloudController class not found")
 print(f"Loaded controller class: {controller.__name__}")
 PY
+else
+  echo "Skipping direct python3 Ryu import check because this shell does not have the ryu module."
+  echo "Using the installed ryu-manager wrapper for controller startup instead."
+fi
 
 if command -v ss >/dev/null 2>&1; then
   if ss -ltn "( sport = :$CONTROLLER_PORT )" | grep -q ":$CONTROLLER_PORT"; then
@@ -56,10 +64,7 @@ if command -v ss >/dev/null 2>&1; then
 fi
 
 echo "Starting Ryu controller with integrated rule sync: $RYU_APP"
-if python3 - <<'PY' >/dev/null 2>&1
-import ryu  # noqa: F401
-PY
-then
+if [[ "$RYU_RUNTIME" == "python-module" ]]; then
   CONTROLLER_CMD=(python3 -m ryu.cmd.manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")
 else
   CONTROLLER_CMD=(ryu-manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")

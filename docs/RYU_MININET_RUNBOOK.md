@@ -73,6 +73,11 @@ export EVENTLET_NO_GREENDNS=yes
 and applies Python 3.10 compatibility aliases for older `eventlet` / `dnspython`
 combinations that still reference `collections.MutableMapping`.
 
+If you run from a Python virtual environment where `python3` does not have the
+`ryu` module but the host still has a working `ryu-manager` command, the
+preflight scripts now skip the direct import check and validate the wrapper
+runtime during controller startup instead.
+
 To keep the controller running for manual inspection:
 
 ```bash

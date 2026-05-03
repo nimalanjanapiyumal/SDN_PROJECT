@@ -19,13 +19,16 @@ echo "controller port: $CONTROLLER_PORT"
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required"; exit 1; }
 
 echo "[2/7] Ryu availability"
-if command -v ryu-manager >/dev/null 2>&1; then
-  echo "ryu-manager wrapper found"
-elif python3 - <<'PY' >/dev/null 2>&1
+RYU_RUNTIME="missing"
+if python3 - <<'PY' >/dev/null 2>&1
 import ryu  # noqa: F401
 PY
 then
   echo "Python ryu module found"
+  RYU_RUNTIME="python-module"
+elif command -v ryu-manager >/dev/null 2>&1; then
+  echo "ryu-manager wrapper found"
+  RYU_RUNTIME="wrapper"
 else
   echo "Ryu is not installed. Install ryu-manager or python3 -m pip install ryu"
   exit 1
@@ -37,6 +40,7 @@ python3 -m py_compile "$RYU_APP"
 echo "[4/7] Controller app imports"
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 export EVENTLET_NO_GREENDNS="${EVENTLET_NO_GREENDNS:-yes}"
+if [[ "$RYU_RUNTIME" == "python-module" ]]; then
 python3 - <<PY
 import importlib.util
 app_path = "$RYU_APP"
@@ -45,6 +49,9 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 print("loaded:", getattr(module, "IntegratedAdaptiveCloudController").__name__)
 PY
+else
+  echo "skipped: active python3 does not provide the ryu module; wrapper runtime will be tested in step 7"
+fi
 
 echo "[5/7] API reachability"
 python3 - <<'PY'
@@ -71,10 +78,7 @@ else
 fi
 
 echo "[7/7] Start controller"
-if python3 - <<'PY' >/dev/null 2>&1
-import ryu  # noqa: F401
-PY
-then
+if [[ "$RYU_RUNTIME" == "python-module" ]]; then
   CONTROLLER_CMD=(python3 -m ryu.cmd.manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")
 else
   CONTROLLER_CMD=(ryu-manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")
