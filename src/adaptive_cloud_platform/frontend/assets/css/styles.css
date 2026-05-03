@@ -2214,6 +2214,27 @@ textarea {
   max-width: 132px;
 }
 
+.token-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0.3rem 0.4rem 0.3rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  background: rgba(10, 14, 24, 0.55);
+}
+
+.token-strip code {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f8fafc;
+  font-size: 0.76rem;
+}
+
 .sdn-status-card {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.82);

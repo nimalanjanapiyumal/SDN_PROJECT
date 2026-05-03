@@ -78,6 +78,11 @@ If you run from a Python virtual environment where `python3` does not have the
 preflight scripts now skip the direct import check and validate the wrapper
 runtime during controller startup instead.
 
+The launch scripts also enable a repo-local `sitecustomize.py` compatibility
+patch via `PYTHONPATH`. This is specifically there to help older Ryu releases
+coexist with newer `eventlet` builds that no longer export
+`eventlet.wsgi.ALREADY_HANDLED`.
+
 To keep the controller running for manual inspection:
 
 ```bash

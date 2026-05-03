@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 import importlib.util
+import json
 import shutil
 import time
 import subprocess
 import urllib.request
-from fastapi import Depends, FastAPI, Header, HTTPException
+from urllib.parse import parse_qs
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST, start_http_server
 from fastapi.responses import FileResponse, Response
@@ -130,19 +132,84 @@ def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+async def _extract_operator_credentials(request: Request) -> tuple[str | None, str | None]:
+    username: str | None = None
+    password: str | None = None
+    body_bytes = await request.body()
+    content_type = (request.headers.get('content-type') or '').lower()
+    data: dict | None = None
+
+    if body_bytes:
+        if 'application/json' in content_type:
+            try:
+                parsed = json.loads(body_bytes.decode('utf-8'))
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                data = parsed
+            elif isinstance(parsed, str):
+                parsed_qs = parse_qs(parsed, keep_blank_values=True)
+                data = {key: values[-1] for key, values in parsed_qs.items()}
+        elif 'application/x-www-form-urlencoded' in content_type or 'multipart/form-data' in content_type:
+            parsed_qs = parse_qs(body_bytes.decode('utf-8'), keep_blank_values=True)
+            data = {key: values[-1] for key, values in parsed_qs.items()}
+        else:
+            decoded = body_bytes.decode('utf-8', errors='ignore')
+            if decoded.strip().startswith('{'):
+                try:
+                    parsed = json.loads(decoded)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    data = parsed
+            elif '=' in decoded:
+                parsed_qs = parse_qs(decoded, keep_blank_values=True)
+                data = {key: values[-1] for key, values in parsed_qs.items()}
+
+    if data:
+        username = data.get('username') or data.get('user')
+        password = data.get('password') or data.get('pw') or data.get('passcode')
+
+    if not username:
+        username = request.query_params.get('username') or request.query_params.get('user')
+    if not password:
+        password = request.query_params.get('password') or request.query_params.get('pw')
+    return username, password
+
+
 @app.post('/api/v1/auth/login')
-def auth_login(payload: OperatorLoginRequest) -> dict:
-    return operator_auth_service.login(payload.username, payload.password)
+async def auth_login(request: Request) -> dict:
+    username, password = await _extract_operator_credentials(request)
+    if not username or not password:
+        raise HTTPException(status_code=422, detail='Operator username and password are required')
+    return operator_auth_service.login(username, password)
+
+
+def _resolve_operator_token(x_operator_token: str | None, authorization: str | None) -> str | None:
+    if isinstance(x_operator_token, str) and x_operator_token.strip():
+        return x_operator_token.strip()
+    if not isinstance(authorization, str) or not authorization.strip():
+        return None
+    scheme, _, credentials = authorization.strip().partition(' ')
+    if scheme.lower() != 'bearer' or not credentials.strip():
+        return None
+    return credentials.strip()
 
 
 @app.get('/api/v1/auth/status')
-def auth_status(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
-    return operator_auth_service.status(x_operator_token)
+def auth_status(
+    x_operator_token: str | None = Header(default=None, alias='X-Operator-Token'),
+    authorization: str | None = Header(default=None, alias='Authorization'),
+) -> dict:
+    return operator_auth_service.status(_resolve_operator_token(x_operator_token, authorization))
 
 
 @app.post('/api/v1/auth/logout')
-def auth_logout(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
-    return operator_auth_service.logout(x_operator_token)
+def auth_logout(
+    x_operator_token: str | None = Header(default=None, alias='X-Operator-Token'),
+    authorization: str | None = Header(default=None, alias='Authorization'),
+) -> dict:
+    return operator_auth_service.logout(_resolve_operator_token(x_operator_token, authorization))
 
 
 def _record_decision_metrics(decision: dict | None) -> None:
@@ -162,8 +229,11 @@ def _record_component4_metrics(result: dict | None) -> None:
         METRIC_COMPONENT4_MITIGATION_LATENCY.set(float(result.get('latency_ms') or 0.0))
 
 
-def _require_operator_session(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
-    token = x_operator_token if isinstance(x_operator_token, str) else None
+def _require_operator_session(
+    x_operator_token: str | None = Header(default=None, alias='X-Operator-Token'),
+    authorization: str | None = Header(default=None, alias='Authorization'),
+) -> dict:
+    token = _resolve_operator_token(x_operator_token, authorization)
     session = operator_auth_service.validate(token)
     if not session:
         raise HTTPException(status_code=401, detail='Operator login required')
@@ -658,9 +728,10 @@ def sdn_status() -> dict:
 
 @app.post('/api/v1/sdn/start')
 def sdn_start(
-    payload: SdnLabStartRequest,
+    payload: SdnLabStartRequest | None = None,
     _: dict = Depends(_require_operator_session),
 ) -> dict:
+    payload = payload or SdnLabStartRequest()
     result = sdn_runtime_service.start_lab(
         scenario=payload.scenario,
         duration_sec=payload.duration_sec,
@@ -687,7 +758,7 @@ def sdn_stop(
 
 @app.post('/api/v1/monitoring/start')
 def monitoring_start(
-    _: MonitoringStackRequest,
+    _: MonitoringStackRequest | None = None,
     __: dict = Depends(_require_operator_session),
 ) -> dict:
     result = sdn_runtime_service.start_monitoring()
@@ -715,9 +786,10 @@ def openstack_status() -> dict:
 
 @app.post('/api/v1/openstack/deploy')
 def openstack_deploy(
-    payload: OpenStackControlRequest,
+    payload: OpenStackControlRequest | None = None,
     _: dict = Depends(_require_operator_session),
 ) -> dict:
+    payload = payload or OpenStackControlRequest()
     result = sdn_runtime_service.deploy_openstack(payload.deployment_mode)
     return {
         'action': result,
@@ -727,9 +799,10 @@ def openstack_deploy(
 
 @app.post('/api/v1/openstack/start')
 def openstack_start(
-    payload: OpenStackControlRequest,
+    payload: OpenStackControlRequest | None = None,
     _: dict = Depends(_require_operator_session),
 ) -> dict:
+    payload = payload or OpenStackControlRequest()
     result = sdn_runtime_service.start_openstack(payload.deployment_mode)
     return {
         'action': result,
@@ -739,9 +812,10 @@ def openstack_start(
 
 @app.post('/api/v1/openstack/stop')
 def openstack_stop(
-    payload: OpenStackControlRequest,
+    payload: OpenStackControlRequest | None = None,
     _: dict = Depends(_require_operator_session),
 ) -> dict:
+    payload = payload or OpenStackControlRequest()
     result = sdn_runtime_service.stop_openstack(payload.deployment_mode)
     return {
         'action': result,

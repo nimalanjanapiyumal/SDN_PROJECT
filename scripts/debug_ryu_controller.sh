@@ -40,6 +40,7 @@ python3 -m py_compile "$RYU_APP"
 echo "[4/7] Controller app imports"
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 export EVENTLET_NO_GREENDNS="${EVENTLET_NO_GREENDNS:-yes}"
+export ADAPTIVE_RYU_COMPAT="${ADAPTIVE_RYU_COMPAT:-1}"
 if [[ "$RYU_RUNTIME" == "python-module" ]]; then
 python3 - <<PY
 import importlib.util

@@ -32,6 +32,7 @@ export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 export ADAPTIVE_API_URL="${ADAPTIVE_API_URL:-http://127.0.0.1:8080}"
 export ADAPTIVE_RULE_SYNC_INTERVAL="${ADAPTIVE_RULE_SYNC_INTERVAL:-5}"
 export EVENTLET_NO_GREENDNS="${EVENTLET_NO_GREENDNS:-yes}"
+export ADAPTIVE_RYU_COMPAT="${ADAPTIVE_RYU_COMPAT:-1}"
 
 echo "Validating integrated Ryu controller app syntax"
 python3 -m py_compile "$RYU_APP"

@@ -53,6 +53,9 @@ function cacheElements() {
     "operatorLoginBtn",
     "operatorLogoutBtn",
     "authStatus",
+    "operatorTokenStrip",
+    "operatorTokenValue",
+    "copyTokenBtn",
     "integratedScenario",
     "automationInterval",
     "startAutomationBtn",
@@ -174,6 +177,7 @@ function bindEvents() {
   });
   els.operatorLoginBtn.addEventListener("click", () => loginOperator("topbar"));
   els.operatorLogoutBtn.addEventListener("click", logoutOperator);
+  els.copyTokenBtn.addEventListener("click", copyOperatorToken);
   els.startAutomationBtn.addEventListener("click", startSystemAutomation);
   els.stopAutomationBtn.addEventListener("click", stopSystemAutomation);
   els.runIntegratedBtn.addEventListener("click", runIntegratedModel);
@@ -318,7 +322,10 @@ async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
-      ...(state.authToken ? { "X-Operator-Token": state.authToken } : {}),
+      ...(state.authToken ? {
+        "X-Operator-Token": state.authToken,
+        "Authorization": `Bearer ${state.authToken}`
+      } : {}),
       ...(options.headers || {})
     },
     ...options
@@ -394,6 +401,9 @@ function renderAuthState() {
   } else if (!state.authToken) {
     setLoginGateStatus("Operator login required.", false);
   }
+  els.operatorTokenStrip.hidden = !authenticated || !state.authToken;
+  els.copyTokenBtn.disabled = !authenticated || !state.authToken;
+  els.operatorTokenValue.textContent = authenticated && state.authToken ? `Bearer ${state.authToken}` : "No token";
   els.startAutomationBtn.disabled = !authenticated || Boolean(automation.running);
   els.stopAutomationBtn.disabled = !authenticated || !automation.running;
   els.runIntegratedBtn.disabled = !authenticated;
@@ -496,6 +506,32 @@ function setLoginGateStatus(message, isError = false) {
   }
   els.loginGateStatus.textContent = message || "";
   els.loginGateStatus.classList.toggle("error", Boolean(isError));
+}
+
+async function copyOperatorToken() {
+  if (!state.authToken) {
+    showToast("No operator token available", true);
+    return;
+  }
+  const value = `Bearer ${state.authToken}`;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const input = document.createElement("textarea");
+      input.value = value;
+      input.setAttribute("readonly", "readonly");
+      input.style.position = "absolute";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+    showToast("API token copied");
+  } catch (error) {
+    showToast("Unable to copy token", true);
+  }
 }
 
 function renderWorkspaceVisibility() {

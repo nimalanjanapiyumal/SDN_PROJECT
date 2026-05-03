@@ -5,7 +5,6 @@ import pytest
 
 from adaptive_cloud_platform.app import (
     app,
-    auth_login,
     auth_logout,
     auth_status,
     automation_start,
@@ -21,8 +20,9 @@ from adaptive_cloud_platform.app import (
     platform_validate,
     sdn_start,
     sdn_status,
+    operator_auth_service,
 )
-from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, OpenStackControlRequest, OperatorLoginRequest, SdnLabStartRequest
+from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, OpenStackControlRequest, SdnLabStartRequest
 
 
 def test_integrated_run_chains_all_components():
@@ -92,7 +92,7 @@ def test_openstack_controls_return_runtime_payloads():
 
 
 def test_operator_auth_login_status_and_logout():
-    result = auth_login(OperatorLoginRequest(username="admin", password="admin123"))
+    result = operator_auth_service.login("admin", "admin123")
     assert result["authenticated"] is True
     token = result["token"]
     assert auth_status(token)["authenticated"] is True
@@ -133,7 +133,38 @@ def test_http_operator_auth_required_for_sdn_start():
     assert "action" in authorized.json()
 
 
+def test_http_bearer_auth_and_optional_control_bodies():
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
+    assert login.status_code == 200
+    token = login.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    status = client.get("/api/v1/auth/status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["authenticated"] is True
+
+    monitoring = client.post("/api/v1/monitoring/start", headers=headers)
+    assert monitoring.status_code == 200
+
+    openstack = client.post("/api/v1/openstack/start", headers=headers)
+    assert openstack.status_code == 200
+    assert "action" in openstack.json()
+
+    sdn = client.post("/api/v1/sdn/start", headers=headers)
+    assert sdn.status_code == 200
+    assert "runtime" in sdn.json()
+
+    logout = client.post("/api/v1/auth/logout", headers=headers)
+    assert logout.status_code == 200
+    assert logout.json()["logged_out"] is True
+
+
 def test_sdn_lab_files_are_packaged():
+    assert Path("src/sitecustomize.py").exists()
     assert Path("src/adaptive_cloud_platform/sdn/ryu_integrated_app.py").exists()
     assert Path("scripts/run_integrated_sdn_lab.sh").exists()
     assert Path("scripts/control_openstack.sh").exists()

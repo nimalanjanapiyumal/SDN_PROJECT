@@ -19,16 +19,23 @@ class OperatorAuthService:
         if username != self.username or password != self.password:
             return {"authenticated": False, "error": "Invalid operator credentials"}
         token = secrets.token_urlsafe(24)
-        expires_at = time.time() + self.session_ttl_sec
+        issued_at = time.time()
+        expires_at = issued_at + self.session_ttl_sec
         session = {
             "username": username,
             "token": token,
-            "issued_at": time.time(),
+            "issued_at": issued_at,
             "expires_at": expires_at,
         }
         self._sessions[token] = session
         self._cleanup()
-        return {"authenticated": True, **session}
+        return {
+            "authenticated": True,
+            "token_type": "Bearer",
+            "auth_header": f"Bearer {token}",
+            "session_ttl_sec": self.session_ttl_sec,
+            **session,
+        }
 
     def logout(self, token: Optional[str]) -> Dict[str, Any]:
         if token and token in self._sessions:
@@ -44,6 +51,7 @@ class OperatorAuthService:
             "authenticated": True,
             "username": session["username"],
             "expires_at": session["expires_at"],
+            "token_type": "Bearer",
         }
 
     def validate(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
