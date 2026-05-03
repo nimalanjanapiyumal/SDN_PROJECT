@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import platform
+import json
 import shutil
 import signal
 import socket
@@ -31,6 +32,13 @@ class SdnRuntimeService:
         self.lab_last_result: Optional[Dict[str, Any]] = None
         self.monitoring_last_command: Optional[str] = None
         self.monitoring_last_result: Optional[Dict[str, Any]] = None
+        self.openstack_log_path = self.logs_dir / "openstack_runtime.log"
+        self.openstack_process: Optional[subprocess.Popen[str]] = None
+        self.openstack_started_at: Optional[float] = None
+        self.openstack_last_command: Optional[str] = None
+        self.openstack_last_action: Optional[str] = None
+        self.openstack_last_error: Optional[str] = None
+        self.openstack_last_result: Optional[Dict[str, Any]] = None
 
     def status(
         self,
@@ -42,6 +50,7 @@ class SdnRuntimeService:
         env = self._environment()
         commands = self.command_catalog()
         monitoring = self._monitoring_status(env)
+        openstack = self._openstack_status(env)
         openflow = self._openflow_status(component_one, component_three, component_four)
         topology = self._topology_status(component_one, component_four, openflow, env, monitoring)
         lab = self._lab_status(env, commands)
@@ -49,6 +58,7 @@ class SdnRuntimeService:
             "environment": env,
             "lab": lab,
             "monitoring": monitoring,
+            "openstack": openstack,
             "openflow": openflow,
             "topology": topology,
             "commands": commands,
@@ -222,9 +232,23 @@ class SdnRuntimeService:
             "stderr": (result.stderr or "").strip(),
         }
 
+    def deploy_openstack(self, deployment_mode: str = "auto") -> Dict[str, Any]:
+        return self._launch_openstack_operation("deploy", deployment_mode)
+
+    def start_openstack(self, deployment_mode: str = "auto") -> Dict[str, Any]:
+        return self._launch_openstack_operation("start", deployment_mode)
+
+    def stop_openstack(self, deployment_mode: str = "auto") -> Dict[str, Any]:
+        return self._launch_openstack_operation("stop", deployment_mode)
+
     def shutdown(self) -> None:
         if self.lab_process and self.lab_process.poll() is None:
             self.stop_lab()
+        if self.openstack_process and self.openstack_process.poll() is None:
+            try:
+                os.killpg(self.openstack_process.pid, signal.SIGTERM)
+            except Exception:
+                self.openstack_process.terminate()
 
     def command_catalog(self) -> List[Dict[str, Any]]:
         return [
@@ -241,6 +265,12 @@ class SdnRuntimeService:
                 "description": "Interactive Mininet CLI with the integrated Ryu controller attached.",
             },
             {
+                "name": "Verify Ryu Startup",
+                "category": "sdn",
+                "command": "bash scripts/debug_ryu_controller.sh",
+                "description": "Run controller-only preflight checks before launching the full Mininet lab.",
+            },
+            {
                 "name": "Validate OpenFlow",
                 "category": "sdn",
                 "command": "ovs-ofctl -O OpenFlow13 dump-flows s1",
@@ -251,6 +281,24 @@ class SdnRuntimeService:
                 "category": "monitoring",
                 "command": "docker compose up -d prometheus grafana",
                 "description": "Boot Prometheus and Grafana for the integrated dashboard stack.",
+            },
+            {
+                "name": "Deploy OpenStack",
+                "category": "openstack",
+                "command": "bash scripts/control_openstack.sh deploy auto",
+                "description": "Install or initialize a single-node MicroStack deployment on Linux.",
+            },
+            {
+                "name": "Start OpenStack",
+                "category": "openstack",
+                "command": "bash scripts/control_openstack.sh start auto",
+                "description": "Start the OpenStack control plane when MicroStack is already installed.",
+            },
+            {
+                "name": "Stop OpenStack",
+                "category": "openstack",
+                "command": "bash scripts/control_openstack.sh stop auto",
+                "description": "Stop the OpenStack control plane gracefully.",
             },
             {
                 "name": "Stop Monitoring",
@@ -267,7 +315,7 @@ class SdnRuntimeService:
             {
                 "name": "OpenStack Servers",
                 "category": "openstack",
-                "command": "openstack server list",
+                "command": "bash scripts/control_openstack.sh inventory auto",
                 "description": "Check compute instances if OpenStack is installed on the Linux runtime.",
             },
             {
@@ -287,7 +335,7 @@ class SdnRuntimeService:
     def _environment(self) -> Dict[str, Any]:
         system_name = platform.system()
         release = platform.release()
-        tool_names = ["bash", "docker", "ryu-manager", "mn", "ovs-ofctl", "ovs-vsctl", "iperf3", "suricata", "openstack"]
+        tool_names = ["bash", "docker", "ryu-manager", "mn", "ovs-ofctl", "ovs-vsctl", "iperf3", "suricata", "openstack", "microstack", "snap", "systemctl"]
         tool_paths = {name: shutil.which(name) for name in tool_names}
         python_modules = {
             "ryu": importlib.util.find_spec("ryu") is not None,
@@ -353,6 +401,34 @@ class SdnRuntimeService:
             ],
         }
 
+    def _openstack_status(self, env: Dict[str, Any]) -> Dict[str, Any]:
+        self._refresh_openstack_process()
+        process = self.openstack_process
+        running = bool(process and process.poll() is None)
+        horizon_probe = self._probe_http("http://127.0.0.1/dashboard/")
+        deployment_mode = self._detect_openstack_mode(env)
+        inventory = self._collect_openstack_inventory(env)
+        return {
+            "mode": deployment_mode,
+            "linux_runtime": env["linux_runtime"],
+            "deploy_supported": env["linux_runtime"] and (bool(env["tool_paths"].get("microstack")) or bool(env["tool_paths"].get("snap"))),
+            "start_supported": env["linux_runtime"] and bool(env["tool_paths"].get("microstack")),
+            "stop_supported": env["linux_runtime"] and bool(env["tool_paths"].get("microstack")),
+            "cli_available": bool(env["tool_paths"].get("openstack")),
+            "microstack_available": bool(env["tool_paths"].get("microstack")),
+            "horizon": horizon_probe,
+            "inventory": inventory,
+            "operation_running": running,
+            "running_action": self.openstack_last_action if running else None,
+            "started_at": self.openstack_started_at,
+            "uptime_sec": round(time.time() - self.openstack_started_at, 1) if running and self.openstack_started_at else None,
+            "last_command": self.openstack_last_command,
+            "last_error": self.openstack_last_error,
+            "last_result": self.openstack_last_result,
+            "log_path": str(self.openstack_log_path),
+            "log_tail": self._read_tail(self.openstack_log_path),
+        }
+
     def _lab_status(self, env: Dict[str, Any], commands: List[Dict[str, Any]]) -> Dict[str, Any]:
         process = self.lab_process
         running = bool(process and process.poll() is None)
@@ -381,6 +457,89 @@ class SdnRuntimeService:
                 "last_error": self.lab_last_error,
             },
         }
+
+    def _launch_openstack_operation(self, action: str, deployment_mode: str) -> Dict[str, Any]:
+        env = self._environment()
+        command = f"bash scripts/control_openstack.sh {action} {deployment_mode}"
+        self.openstack_last_command = command
+        self.openstack_last_action = action
+
+        if not env["linux_runtime"]:
+            self.openstack_last_error = "Linux runtime required for OpenStack deployment and lifecycle control."
+            self.openstack_last_result = {
+                "launched": False,
+                "status": "manual_required",
+                "reason": self.openstack_last_error,
+                "command": command,
+            }
+            return self.openstack_last_result
+
+        if action == "deploy" and not (env["tool_paths"].get("microstack") or env["tool_paths"].get("snap")):
+            self.openstack_last_error = "MicroStack deploy requires microstack or snap on the Linux runtime."
+            self.openstack_last_result = {
+                "launched": False,
+                "status": "dependency_missing",
+                "reason": self.openstack_last_error,
+                "command": command,
+            }
+            return self.openstack_last_result
+
+        if action in {"start", "stop"} and not env["tool_paths"].get("microstack"):
+            self.openstack_last_error = "MicroStack is required for OpenStack start and stop controls."
+            self.openstack_last_result = {
+                "launched": False,
+                "status": "dependency_missing",
+                "reason": self.openstack_last_error,
+                "command": command,
+            }
+            return self.openstack_last_result
+
+        if self.openstack_process and self.openstack_process.poll() is None:
+            return {
+                "launched": False,
+                "status": "already_running",
+                "pid": self.openstack_process.pid,
+                "command": self.openstack_last_command,
+            }
+
+        with self.openstack_log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting OpenStack action: {command}\n")
+
+        log_handle = self.openstack_log_path.open("a", encoding="utf-8")
+        process = subprocess.Popen(
+            ["bash", str(self.repo_root / "scripts" / "control_openstack.sh"), action, deployment_mode],
+            cwd=str(self.repo_root),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+            env=self._process_env(),
+        )
+        self.openstack_process = process
+        self.openstack_started_at = time.time()
+        time.sleep(1.0)
+        if process.poll() is not None:
+            self.openstack_last_error = self._read_tail(self.openstack_log_path)
+            self.openstack_last_result = {
+                "launched": False,
+                "status": "exited_early",
+                "exit_code": process.returncode,
+                "command": command,
+                "log_tail": self.openstack_last_error,
+                "action": action,
+            }
+            return self.openstack_last_result
+
+        self.openstack_last_error = None
+        self.openstack_last_result = {
+            "launched": True,
+            "status": "running",
+            "pid": process.pid,
+            "command": command,
+            "started_at": self.openstack_started_at,
+            "action": action,
+        }
+        return self.openstack_last_result
 
     def _openflow_status(
         self,
@@ -542,6 +701,60 @@ class SdnRuntimeService:
             parts.append("allow " + ", ".join(str(item) for item in match["allowed_destinations"]))
         return " | ".join(parts) if parts else "OpenFlow match"
 
+    def _detect_openstack_mode(self, env: Dict[str, Any]) -> str:
+        if env["tool_paths"].get("microstack"):
+            return "microstack"
+        if env["tool_paths"].get("openstack"):
+            return "client_only"
+        if env["tool_paths"].get("snap"):
+            return "installable"
+        return "unavailable"
+
+    def _collect_openstack_inventory(self, env: Dict[str, Any]) -> Dict[str, Any]:
+        summary = {
+            "available": False,
+            "servers_count": 0,
+            "networks_count": 0,
+            "servers": [],
+            "networks": [],
+            "error": None,
+        }
+        if not env["tool_paths"].get("openstack"):
+            return summary
+        try:
+            servers_result = subprocess.run(
+                ["openstack", "server", "list", "-f", "json"],
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=self._process_env(),
+            )
+            networks_result = subprocess.run(
+                ["openstack", "network", "list", "-f", "json"],
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=self._process_env(),
+            )
+            if servers_result.returncode != 0 or networks_result.returncode != 0:
+                summary["error"] = ((servers_result.stderr or "") + " " + (networks_result.stderr or "")).strip()
+                return summary
+            servers = json.loads(servers_result.stdout or "[]")
+            networks = json.loads(networks_result.stdout or "[]")
+            summary.update({
+                "available": True,
+                "servers_count": len(servers),
+                "networks_count": len(networks),
+                "servers": servers[:5],
+                "networks": networks[:5],
+            })
+            return summary
+        except Exception as exc:
+            summary["error"] = str(exc)
+            return summary
+
     def _probe_http(self, url: str, timeout: float = 0.6) -> Dict[str, Any]:
         started = time.time()
         try:
@@ -589,6 +802,26 @@ class SdnRuntimeService:
         env["ADAPTIVE_API_URL"] = self.api_url
         env["ADAPTIVE_RYU_LOG"] = str(self.ryu_log_path)
         return env
+
+    def _refresh_openstack_process(self) -> None:
+        process = self.openstack_process
+        if process is None:
+            return
+        if process.poll() is None:
+            return
+        exit_code = process.returncode
+        log_tail = self._read_tail(self.openstack_log_path)
+        self.openstack_last_error = None if exit_code == 0 else log_tail
+        self.openstack_last_result = {
+            "launched": exit_code == 0,
+            "status": "completed" if exit_code == 0 else "failed",
+            "exit_code": exit_code,
+            "command": self.openstack_last_command,
+            "action": self.openstack_last_action,
+            "finished_at": time.time(),
+            "log_tail": log_tail,
+        }
+        self.openstack_process = None
 
     def _read_tail(self, path: Path, max_chars: int = 2400) -> str:
         if not path.exists():

@@ -76,7 +76,7 @@ class IntegratedAdaptiveCloudController(app_manager.RyuApp):
             match = parser.OFPMatch(in_port=in_port, eth_dst=eth.dst, eth_src=eth.src)
             self._add_flow(datapath, priority=10, match=match, actions=actions, idle_timeout=60)
 
-        data = None if msg.buffer_id == ofproto.OFP_NO_BUFFER else msg.data
+        data = msg.data if msg.buffer_id == ofproto.OFP_NO_BUFFER else None
         out = parser.OFPPacketOut(
             datapath=datapath,
             buffer_id=msg.buffer_id,

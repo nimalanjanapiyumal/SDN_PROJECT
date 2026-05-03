@@ -59,12 +59,17 @@ function cacheElements() {
     "validateSdnBtn",
     "startMonitoringStackBtn",
     "stopMonitoringStackBtn",
+    "openstackMode",
+    "deployOpenstackBtn",
+    "startOpenstackBtn",
+    "stopOpenstackBtn",
     "sdnRuntimeSummary",
     "sdnTopologyView",
     "sdnControllerWindow",
     "sdnOpenflowList",
     "sdnMonitoringViews",
     "sdnCommandList",
+    "openstackRuntimePanel",
     "sdnRuntimeJson",
     "combinedHealth",
     "combinedRuns",
@@ -166,6 +171,9 @@ function bindEvents() {
   els.validateSdnBtn.addEventListener("click", validateSdnRuntime);
   els.startMonitoringStackBtn.addEventListener("click", startMonitoringStack);
   els.stopMonitoringStackBtn.addEventListener("click", stopMonitoringStack);
+  els.deployOpenstackBtn.addEventListener("click", deployOpenstack);
+  els.startOpenstackBtn.addEventListener("click", startOpenstack);
+  els.stopOpenstackBtn.addEventListener("click", stopOpenstack);
   els.autoRefresh.addEventListener("change", (event) => {
     state.autoRefresh = event.target.checked;
   });
@@ -203,6 +211,7 @@ function bindEvents() {
   els.componentFourRulesBtn.addEventListener("click", showComponentFourRules);
   els.componentFourSubjectList.addEventListener("click", handleComponentFourSubjectAction);
   els.sdnMonitoringViews.addEventListener("click", handleOpenRuntimeLink);
+  els.openstackRuntimePanel.addEventListener("click", handleOpenRuntimeLink);
   document.querySelectorAll("[data-c2-scenario]").forEach((button) => {
     button.addEventListener("click", () => fillComponentTwoScenario(button.dataset.c2Scenario));
   });
@@ -346,6 +355,8 @@ function renderAuthState() {
   const authenticated = Boolean(auth.authenticated);
   const automation = state.automation || {};
   const lab = state.sdnRuntime?.lab || {};
+  const openstack = state.sdnRuntime?.openstack || {};
+  const openstackBusy = Boolean(openstack.operation_running);
   els.authStatus.className = `status-pill ${authenticated ? "online" : "offline"}`;
   els.authStatus.innerHTML = `<span class="status-dot"></span>${escapeHtml(authenticated ? `Operator ${auth.username || "admin"}` : "Locked")}`;
   els.operatorLoginBtn.disabled = authenticated;
@@ -359,6 +370,9 @@ function renderAuthState() {
   els.stopSdnLabBtn.disabled = !authenticated || !lab.running;
   els.startMonitoringStackBtn.disabled = !authenticated;
   els.stopMonitoringStackBtn.disabled = !authenticated;
+  els.deployOpenstackBtn.disabled = !authenticated || openstackBusy || !openstack.deploy_supported;
+  els.startOpenstackBtn.disabled = !authenticated || openstackBusy || !openstack.start_supported;
+  els.stopOpenstackBtn.disabled = !authenticated || openstackBusy || !openstack.stop_supported;
   els.componentFourEnforceSegBtn.disabled = !authenticated;
   els.componentFourFetchCtiBtn.disabled = !authenticated;
   els.componentFourBlockIocBtn.disabled = !authenticated;
@@ -462,6 +476,7 @@ function renderSdnRuntime() {
   const runtime = state.sdnRuntime || state.integrated?.sdn_runtime || {};
   const lab = runtime.lab || {};
   const monitoring = runtime.monitoring || {};
+  const openstack = runtime.openstack || {};
   const openflow = runtime.openflow || {};
   const topology = runtime.topology || {};
   const environment = runtime.environment || {};
@@ -487,6 +502,11 @@ function renderSdnRuntime() {
       <strong>${monitoring.grafana?.reachable ? "Live" : "Down"}</strong>
       <em>${monitoring.grafana?.latency_ms ? `${Number(monitoring.grafana.latency_ms).toFixed(0)} ms` : "127.0.0.1:3000"}</em>
     </article>
+    <article class="sdn-status-card ${openstack.horizon?.reachable ? "live" : "idle"}">
+      <span>OpenStack</span>
+      <strong>${openstack.microstack_available ? "Managed" : (openstack.cli_available ? "CLI" : "Down")}</strong>
+      <em>${openstack.horizon?.reachable ? "Horizon live" : (openstack.mode || "unavailable")}</em>
+    </article>
     <article class="sdn-status-card ${openflow.total_rules ? "live" : "idle"}">
       <span>OpenFlow</span>
       <strong>${openflow.total_rules || 0} rules</strong>
@@ -499,6 +519,7 @@ function renderSdnRuntime() {
   els.sdnOpenflowList.innerHTML = renderSdnOpenflow(openflow);
   els.sdnMonitoringViews.innerHTML = renderSdnMonitoringViews(monitoring.views || []);
   els.sdnCommandList.innerHTML = renderSdnCommands(runtime.commands || []);
+  els.openstackRuntimePanel.innerHTML = renderOpenStackRuntime(openstack);
   els.sdnRuntimeJson.textContent = JSON.stringify(runtime, null, 2);
 }
 
@@ -603,6 +624,50 @@ function renderSdnMonitoringViews(views) {
       </div>
     </article>
   `).join("");
+}
+
+function renderOpenStackRuntime(openstack) {
+  const inventory = openstack.inventory || {};
+  const horizon = openstack.horizon || {};
+  const logTail = openstack.log_tail || "";
+  const lastError = openstack.last_error || inventory.error || "";
+  const lastResult = openstack.last_result || {};
+  const inventorySummary = [
+    `Mode: ${prettify(openstack.mode || "unavailable")}`,
+    `Servers: ${inventory.servers_count || 0}`,
+    `Networks: ${inventory.networks_count || 0}`,
+    `Action: ${prettify(openstack.running_action || lastResult.action || "idle")}`
+  ];
+  return `
+    <div class="sdn-runtime-summary">
+      <article class="sdn-status-card ${openstack.operation_running ? "live" : "idle"}">
+        <span>Deploy</span>
+        <strong>${openstack.operation_running ? "Running" : (openstack.deploy_supported ? "Ready" : "Linux only")}</strong>
+        <em>${escapeHtml(openstack.last_command || "bash scripts/control_openstack.sh deploy auto")}</em>
+      </article>
+      <article class="sdn-status-card ${horizon.reachable ? "live" : "idle"}">
+        <span>Horizon</span>
+        <strong>${horizon.reachable ? "Live" : "Offline"}</strong>
+        <em>${horizon.latency_ms ? `${Number(horizon.latency_ms).toFixed(0)} ms` : "127.0.0.1/dashboard/"}</em>
+      </article>
+      <article class="sdn-status-card ${inventory.available ? "live" : "idle"}">
+        <span>Inventory</span>
+        <strong>${inventory.available ? "Loaded" : "Pending"}</strong>
+        <em>${inventory.servers_count || 0} servers / ${inventory.networks_count || 0} networks</em>
+      </article>
+    </div>
+    <div class="sdn-controller-window">
+      <div class="sdn-controller-summary">
+        ${inventorySummary.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>
+      <div class="sdn-controller-links">
+        <button class="mini-button" type="button" data-open-url="http://127.0.0.1/dashboard/">Open Horizon</button>
+        <button class="mini-button" type="button" data-open-url="http://127.0.0.1:8080/api/v1/openstack/status">Open Status API</button>
+      </div>
+      ${lastError ? `<div class="sdn-controller-alert">${escapeHtml(lastError)}</div>` : ""}
+      ${logTail ? `<div class="sdn-controller-log">${logTail.split("\n").filter(Boolean).map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>` : `<p class="empty">OpenStack operation log will appear here.</p>`}
+    </div>
+  `;
 }
 
 function renderSdnCommands(commands) {
@@ -1117,6 +1182,47 @@ async function startMonitoringStack() {
     showToast(error.message, true);
   } finally {
     els.startMonitoringStackBtn.disabled = false;
+  }
+}
+
+async function deployOpenstack() {
+  await controlOpenstack("/api/v1/openstack/deploy", "OpenStack deploy started");
+}
+
+async function startOpenstack() {
+  await controlOpenstack("/api/v1/openstack/start", "OpenStack start requested");
+}
+
+async function stopOpenstack() {
+  await controlOpenstack("/api/v1/openstack/stop", "OpenStack stop requested");
+}
+
+async function controlOpenstack(path, successMessage) {
+  const payload = { deployment_mode: valueOf("openstackMode") || "auto" };
+  const buttonMap = {
+    "/api/v1/openstack/deploy": els.deployOpenstackBtn,
+    "/api/v1/openstack/start": els.startOpenstackBtn,
+    "/api/v1/openstack/stop": els.stopOpenstackBtn
+  };
+  const button = buttonMap[path];
+  try {
+    if (button) {
+      button.disabled = true;
+    }
+    const result = await apiRequest(path, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.sdnRuntime = result.runtime || null;
+    const action = result.action || {};
+    showToast(action.launched ? successMessage : (action.reason || action.status || successMessage));
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
   }
 }
 

@@ -218,6 +218,10 @@ class MonitoringStackRequest(BaseModel):
     start_grafana: bool = True
 
 
+class OpenStackControlRequest(BaseModel):
+    deployment_mode: str = Field(default="auto")
+
+
 class PolicyEnforcementRequest(BaseModel):
     type: str
     src_ip: Optional[str] = None

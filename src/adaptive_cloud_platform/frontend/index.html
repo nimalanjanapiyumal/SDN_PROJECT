@@ -189,6 +189,22 @@
             <div id="sdnCommandList" class="sdn-command-list"></div>
             <pre id="sdnRuntimeJson" class="workspace-hidden">{}</pre>
           </div>
+
+          <div class="runtime-panel">
+            <div class="section-title">
+              <h2>OpenStack</h2>
+            </div>
+            <div class="sdn-toolbar">
+              <select class="scenario-select" id="openstackMode" aria-label="OpenStack deployment mode">
+                <option value="auto" selected>Auto</option>
+                <option value="microstack">MicroStack</option>
+              </select>
+              <button class="secondary-button" id="deployOpenstackBtn" type="button">Deploy</button>
+              <button class="secondary-button" id="startOpenstackBtn" type="button">Start</button>
+              <button class="secondary-button subtle" id="stopOpenstackBtn" type="button">Stop</button>
+            </div>
+            <div id="openstackRuntimePanel" class="openstack-runtime"></div>
+          </div>
         </section>
 
         <section class="kpi-grid" data-workspace="component-1" aria-label="Component 1 runtime metrics">

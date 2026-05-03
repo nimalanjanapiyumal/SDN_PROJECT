@@ -29,6 +29,31 @@ export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 export ADAPTIVE_API_URL="${ADAPTIVE_API_URL:-http://127.0.0.1:8080}"
 export ADAPTIVE_RULE_SYNC_INTERVAL="${ADAPTIVE_RULE_SYNC_INTERVAL:-5}"
 
+echo "Validating integrated Ryu controller app syntax"
+python3 -m py_compile "$RYU_APP"
+
+echo "Validating integrated Ryu controller imports"
+python3 - <<PY
+import importlib.util
+import sys
+
+app_path = "$RYU_APP"
+spec = importlib.util.spec_from_file_location("adaptive_cloud_platform.sdn.ryu_integrated_app", app_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+controller = getattr(module, "IntegratedAdaptiveCloudController", None)
+if controller is None:
+    raise SystemExit("IntegratedAdaptiveCloudController class not found")
+print(f"Loaded controller class: {controller.__name__}")
+PY
+
+if command -v ss >/dev/null 2>&1; then
+  if ss -ltn "( sport = :$CONTROLLER_PORT )" | grep -q ":$CONTROLLER_PORT"; then
+    echo "Warning: port $CONTROLLER_PORT is already in use before starting Ryu"
+    ss -ltnp "( sport = :$CONTROLLER_PORT )" || true
+  fi
+fi
+
 echo "Starting Ryu controller with integrated rule sync: $RYU_APP"
 if python3 - <<'PY' >/dev/null 2>&1
 import ryu  # noqa: F401

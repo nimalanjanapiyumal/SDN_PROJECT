@@ -14,11 +14,15 @@ from adaptive_cloud_platform.app import (
     integrated_run,
     integrated_status,
     monitoring_start,
+    openstack_deploy,
+    openstack_start,
+    openstack_status,
+    openstack_stop,
     platform_validate,
     sdn_start,
     sdn_status,
 )
-from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, OperatorLoginRequest, SdnLabStartRequest
+from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, OpenStackControlRequest, OperatorLoginRequest, SdnLabStartRequest
 
 
 def test_integrated_run_chains_all_components():
@@ -57,6 +61,7 @@ def test_sdn_runtime_reports_topology_and_openflow():
     assert "openflow" in status
     assert "commands" in status
     assert "views" in status
+    assert "openstack" in status
     assert "controller_window" in status["lab"]
 
 
@@ -68,6 +73,22 @@ def test_sdn_start_and_monitoring_start_return_runtime_payloads():
     assert "action" in sdn_result
     assert "runtime" in monitoring_result
     assert "action" in monitoring_result
+
+
+def test_openstack_controls_return_runtime_payloads():
+    deploy_result = openstack_deploy(OpenStackControlRequest(deployment_mode="auto"))
+    start_result = openstack_start(OpenStackControlRequest(deployment_mode="auto"))
+    stop_result = openstack_stop(OpenStackControlRequest(deployment_mode="auto"))
+    status = openstack_status()
+
+    assert "runtime" in deploy_result
+    assert "action" in deploy_result
+    assert "runtime" in start_result
+    assert "action" in start_result
+    assert "runtime" in stop_result
+    assert "action" in stop_result
+    assert "mode" in status
+    assert "inventory" in status
 
 
 def test_operator_auth_login_status_and_logout():
@@ -115,6 +136,7 @@ def test_http_operator_auth_required_for_sdn_start():
 def test_sdn_lab_files_are_packaged():
     assert Path("src/adaptive_cloud_platform/sdn/ryu_integrated_app.py").exists()
     assert Path("scripts/run_integrated_sdn_lab.sh").exists()
+    assert Path("scripts/control_openstack.sh").exists()
     assert Path("docs/RYU_MININET_RUNBOOK.md").exists()
 
 

@@ -27,6 +27,9 @@ def test_frontend_assets_exist():
     assert "sdnControllerWindow" in content
     assert "sdnOpenflowList" in content
     assert "sdnMonitoringViews" in content
+    assert "openstackMode" in content
+    assert "deployOpenstackBtn" in content
+    assert "openstackRuntimePanel" in content
 
 
 def test_favicon_route_exists():

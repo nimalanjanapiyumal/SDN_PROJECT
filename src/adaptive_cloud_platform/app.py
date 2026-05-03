@@ -33,6 +33,7 @@ from adaptive_cloud_platform.models import (
     IntegratedAutomationRequest,
     IntegratedRunRequest,
     MonitoringStackRequest,
+    OpenStackControlRequest,
     OperatorLoginRequest,
     IntentRequest,
     PolicyEnforcementRequest,
@@ -701,6 +702,47 @@ def monitoring_stop(
     _: dict = Depends(_require_operator_session),
 ) -> dict:
     result = sdn_runtime_service.stop_monitoring()
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.get('/api/v1/openstack/status')
+def openstack_status() -> dict:
+    return sdn_status().get('openstack', {})
+
+
+@app.post('/api/v1/openstack/deploy')
+def openstack_deploy(
+    payload: OpenStackControlRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
+    result = sdn_runtime_service.deploy_openstack(payload.deployment_mode)
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.post('/api/v1/openstack/start')
+def openstack_start(
+    payload: OpenStackControlRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
+    result = sdn_runtime_service.start_openstack(payload.deployment_mode)
+    return {
+        'action': result,
+        'runtime': sdn_status(),
+    }
+
+
+@app.post('/api/v1/openstack/stop')
+def openstack_stop(
+    payload: OpenStackControlRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
+    result = sdn_runtime_service.stop_openstack(payload.deployment_mode)
     return {
         'action': result,
         'runtime': sdn_status(),
