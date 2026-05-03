@@ -10,6 +10,8 @@ const state = {
   integrated: null,
   sdnRuntime: null,
   automation: null,
+  auth: null,
+  authToken: window.localStorage.getItem("adaptiveOperatorToken") || "",
   latestIntegratedRun: null,
   platformValidation: null,
   integratedRunCount: 0,
@@ -24,7 +26,6 @@ document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   bindEvents();
   renderComponentNav();
-  renderApiMatrix();
   refreshAll();
   state.timer = window.setInterval(() => {
     if (state.autoRefresh) {
@@ -39,6 +40,11 @@ function cacheElements() {
     "apiStatus",
     "refreshBtn",
     "autoRefresh",
+    "operatorUser",
+    "operatorPass",
+    "operatorLoginBtn",
+    "operatorLogoutBtn",
+    "authStatus",
     "integratedScenario",
     "automationInterval",
     "startAutomationBtn",
@@ -55,6 +61,7 @@ function cacheElements() {
     "stopMonitoringStackBtn",
     "sdnRuntimeSummary",
     "sdnTopologyView",
+    "sdnControllerWindow",
     "sdnOpenflowList",
     "sdnMonitoringViews",
     "sdnCommandList",
@@ -148,6 +155,8 @@ function cacheElements() {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", () => refreshAll());
+  els.operatorLoginBtn.addEventListener("click", loginOperator);
+  els.operatorLogoutBtn.addEventListener("click", logoutOperator);
   els.startAutomationBtn.addEventListener("click", startSystemAutomation);
   els.stopAutomationBtn.addEventListener("click", stopSystemAutomation);
   els.runIntegratedBtn.addEventListener("click", runIntegratedModel);
@@ -208,7 +217,7 @@ function bindEvents() {
 async function refreshAll(options = {}) {
   setApiStatus("loading", "Refreshing");
   try {
-    const [health, snapshot, componentOne, componentTwo, componentThree, componentFour, integrated, automation] = await Promise.all([
+    const [health, snapshot, componentOne, componentTwo, componentThree, componentFour, integrated, automation, auth] = await Promise.all([
       apiRequest("/healthz"),
       apiRequest("/api/v1/state"),
       apiRequest("/api/v1/component-1/status"),
@@ -216,7 +225,8 @@ async function refreshAll(options = {}) {
       apiRequest("/api/v1/component-3/status"),
       apiRequest("/api/v1/component-4/status"),
       apiRequest("/api/v1/integrated/status"),
-      apiRequest("/api/v1/automation/status")
+      apiRequest("/api/v1/automation/status"),
+      apiRequest("/api/v1/auth/status")
     ]);
     state.health = health;
     state.snapshot = snapshot;
@@ -227,6 +237,7 @@ async function refreshAll(options = {}) {
     state.integrated = integrated;
     state.sdnRuntime = integrated?.sdn_runtime || null;
     state.automation = automation;
+    state.auth = auth;
     renderState();
     setApiStatus("online", "Online");
     if (!options.quiet) {
@@ -238,16 +249,64 @@ async function refreshAll(options = {}) {
   }
 }
 
+async function loginOperator() {
+  const payload = {
+    username: valueOf("operatorUser"),
+    password: valueOf("operatorPass")
+  };
+  try {
+    const result = await apiRequest("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {}
+    });
+    if (!result.authenticated || !result.token) {
+      showToast(result.error || "Login failed", true);
+      return;
+    }
+    state.authToken = result.token;
+    window.localStorage.setItem("adaptiveOperatorToken", result.token);
+    showToast("Operator login successful");
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function logoutOperator() {
+  try {
+    await apiRequest("/api/v1/auth/logout", {
+      method: "POST",
+      body: "{}"
+    });
+  } catch (error) {
+    // Best effort logout; clear local token even if the server session is already gone.
+  } finally {
+    state.authToken = "";
+    state.auth = { authenticated: false };
+    window.localStorage.removeItem("adaptiveOperatorToken");
+    renderAuthState();
+    showToast("Operator logged out");
+  }
+}
+
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
+      ...(state.authToken ? { "X-Operator-Token": state.authToken } : {}),
       ...(options.headers || {})
     },
     ...options
   });
   if (!response.ok) {
     const body = await response.text();
+    if (response.status === 401) {
+      state.auth = { authenticated: false };
+      state.authToken = "";
+      window.localStorage.removeItem("adaptiveOperatorToken");
+      renderAuthState();
+    }
     throw new Error(`${response.status} ${response.statusText}: ${body.slice(0, 140)}`);
   }
   const contentType = response.headers.get("content-type") || "";
@@ -275,10 +334,34 @@ function renderState() {
   renderComponentThree();
   renderComponentFour();
   renderIntegratedStatus();
+  renderAuthState();
   renderSdnRuntime();
   renderComponentPanel();
   renderComponentNav();
   renderWorkspaceVisibility();
+}
+
+function renderAuthState() {
+  const auth = state.auth || { authenticated: false };
+  const authenticated = Boolean(auth.authenticated);
+  const automation = state.automation || {};
+  const lab = state.sdnRuntime?.lab || {};
+  els.authStatus.className = `status-pill ${authenticated ? "online" : "offline"}`;
+  els.authStatus.innerHTML = `<span class="status-dot"></span>${escapeHtml(authenticated ? `Operator ${auth.username || "admin"}` : "Locked")}`;
+  els.operatorLoginBtn.disabled = authenticated;
+  els.operatorLogoutBtn.disabled = !authenticated;
+  els.operatorUser.disabled = authenticated;
+  els.operatorPass.disabled = authenticated;
+  els.startAutomationBtn.disabled = !authenticated || Boolean(automation.running);
+  els.stopAutomationBtn.disabled = !authenticated || !automation.running;
+  els.runIntegratedBtn.disabled = !authenticated;
+  els.startSdnLabBtn.disabled = !authenticated;
+  els.stopSdnLabBtn.disabled = !authenticated || !lab.running;
+  els.startMonitoringStackBtn.disabled = !authenticated;
+  els.stopMonitoringStackBtn.disabled = !authenticated;
+  els.componentFourEnforceSegBtn.disabled = !authenticated;
+  els.componentFourFetchCtiBtn.disabled = !authenticated;
+  els.componentFourBlockIocBtn.disabled = !authenticated;
 }
 
 function renderLatestAction() {
@@ -412,12 +495,11 @@ function renderSdnRuntime() {
   `;
 
   els.sdnTopologyView.innerHTML = renderSdnTopology(topology);
+  els.sdnControllerWindow.innerHTML = renderSdnControllerWindow(runtime);
   els.sdnOpenflowList.innerHTML = renderSdnOpenflow(openflow);
   els.sdnMonitoringViews.innerHTML = renderSdnMonitoringViews(monitoring.views || []);
   els.sdnCommandList.innerHTML = renderSdnCommands(runtime.commands || []);
   els.sdnRuntimeJson.textContent = JSON.stringify(runtime, null, 2);
-
-  els.stopSdnLabBtn.disabled = !lab.running;
 }
 
 function renderSdnTopology(topology) {
@@ -479,6 +561,30 @@ function renderSdnOpenflow(openflow) {
         </article>
       `).join("") : `<p class="empty">No OpenFlow-compatible rules are active yet.</p>`}
     </div>
+  `;
+}
+
+function renderSdnControllerWindow(runtime) {
+  const lab = runtime.lab || {};
+  const controller = lab.controller_window || {};
+  const topology = runtime.topology || {};
+  const openflow = runtime.openflow || {};
+  const switches = topology.switches || [];
+  const connected = switches.filter((item) => item.state === "live");
+  const logs = controller.recent_logs || [];
+  const lastError = controller.last_error || lab.last_error || "";
+  return `
+    <div class="sdn-controller-summary">
+      <span>Status: ${escapeHtml(prettify(controller.status || "offline"))}</span>
+      <span>Port: ${escapeHtml(String(controller.port || 6653))}</span>
+      <span>Switches: ${connected.length}/${switches.length}</span>
+      <span>Rules: ${escapeHtml(String(openflow.total_rules || 0))}</span>
+    </div>
+    <div class="sdn-controller-links">
+      ${switches.map((item) => `<span class="controller-link ${escapeHtml(item.state || "idle")}">${escapeHtml(item.name)} | ${item.rules || 0} rules</span>`).join("")}
+    </div>
+    ${lastError ? `<div class="sdn-controller-alert">${escapeHtml(lastError)}</div>` : ""}
+    ${logs.length ? `<div class="sdn-controller-log">${logs.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>` : `<p class="empty">Controller log will appear when Ryu starts.</p>`}
   `;
 }
 
@@ -1793,6 +1899,7 @@ function renderComponentFourSubjectList(subjects, allSubjects = []) {
   if (!subjects.length) {
     return `<p class="empty">No hosts available.</p>`;
   }
+  const authenticated = Boolean(state.auth?.authenticated);
   return subjects.map((subject) => `
     <article class="subject-row">
       <div class="subject-main">
@@ -1810,7 +1917,7 @@ function renderComponentFourSubjectList(subjects, allSubjects = []) {
       </div>
       <label class="subject-target-picker">
         <span>Allowed servers</span>
-        <select multiple size="4" data-c4-targets-for="${escapeHtml(subject.ip || "")}">
+        <select multiple size="4" data-c4-targets-for="${escapeHtml(subject.ip || "")}" ${authenticated ? "" : "disabled"}>
           ${allSubjects
             .filter((candidate) => candidate.ip && candidate.ip !== subject.ip)
             .map((candidate) => `
@@ -1821,9 +1928,9 @@ function renderComponentFourSubjectList(subjects, allSubjects = []) {
         </select>
       </label>
       <div class="subject-actions">
-        <button class="mini-button" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="allow">Allow Selected</button>
-        <button class="mini-button danger" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="block">Deny</button>
-        <button class="mini-button warning" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="temporary_block">Temp Block</button>
+        <button class="mini-button" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="allow" ${authenticated ? "" : "disabled"}>Allow Selected</button>
+        <button class="mini-button danger" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="block" ${authenticated ? "" : "disabled"}>Deny</button>
+        <button class="mini-button warning" type="button" data-c4-subject="${escapeHtml(subject.ip || "")}" data-c4-action="temporary_block" ${authenticated ? "" : "disabled"}>Temp Block</button>
       </div>
     </article>
   `).join("");

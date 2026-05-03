@@ -236,3 +236,8 @@ class SessionVerifyRequest(BaseModel):
     token: str
     ip: str
     bytes_sent: int = 0
+
+
+class OperatorLoginRequest(BaseModel):
+    username: str
+    password: str

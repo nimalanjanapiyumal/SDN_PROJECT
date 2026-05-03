@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import platform
 import shutil
@@ -79,8 +80,18 @@ class SdnRuntimeService:
             }
             return self.lab_last_result
 
-        if not env["tool_paths"].get("ryu-manager") or not env["tool_paths"].get("mn"):
-            self.lab_last_error = "Missing ryu-manager or mn on the current Linux runtime."
+        if not env["tool_paths"].get("mn"):
+            self.lab_last_error = "Missing mn on the current Linux runtime."
+            self.lab_last_result = {
+                "launched": False,
+                "status": "dependency_missing",
+                "reason": self.lab_last_error,
+                "command": command,
+            }
+            return self.lab_last_result
+
+        if not env["ryu_runtime_ready"]:
+            self.lab_last_error = "Missing the Ryu controller runtime. Install ryu-manager or the Python ryu package."
             self.lab_last_result = {
                 "launched": False,
                 "status": "dependency_missing",
@@ -254,6 +265,18 @@ class SdnRuntimeService:
                 "description": "Read the most recent integrated Ryu controller messages.",
             },
             {
+                "name": "OpenStack Servers",
+                "category": "openstack",
+                "command": "openstack server list",
+                "description": "Check compute instances if OpenStack is installed on the Linux runtime.",
+            },
+            {
+                "name": "OpenStack Networks",
+                "category": "openstack",
+                "command": "openstack network list",
+                "description": "Check tenant and provider networks from the OpenStack CLI.",
+            },
+            {
                 "name": "Inspect Lab Log",
                 "category": "debug",
                 "command": f"tail -n 80 {self.lab_log_path}",
@@ -264,14 +287,22 @@ class SdnRuntimeService:
     def _environment(self) -> Dict[str, Any]:
         system_name = platform.system()
         release = platform.release()
-        tool_names = ["bash", "docker", "ryu-manager", "mn", "ovs-ofctl", "ovs-vsctl", "iperf3", "suricata"]
+        tool_names = ["bash", "docker", "ryu-manager", "mn", "ovs-ofctl", "ovs-vsctl", "iperf3", "suricata", "openstack"]
         tool_paths = {name: shutil.which(name) for name in tool_names}
+        python_modules = {
+            "ryu": importlib.util.find_spec("ryu") is not None,
+            "mininet": importlib.util.find_spec("mininet") is not None,
+            "openstack": importlib.util.find_spec("openstack") is not None,
+        }
+        ryu_runtime_ready = bool(tool_paths.get("ryu-manager")) or python_modules["ryu"]
         return {
             "platform": system_name,
             "release": release,
             "linux_runtime": system_name.lower() == "linux",
             "wsl_runtime": "microsoft" in release.lower(),
             "tool_paths": tool_paths,
+            "python_modules": python_modules,
+            "ryu_runtime_ready": ryu_runtime_ready,
             "repo_root": str(self.repo_root),
             "logs_dir": str(self.logs_dir),
         }
@@ -281,6 +312,7 @@ class SdnRuntimeService:
         metrics_probe = self._probe_http(f"http://127.0.0.1:{self.metrics_port}/metrics")
         prometheus_probe = self._probe_http("http://127.0.0.1:9090/-/ready")
         grafana_probe = self._probe_http("http://127.0.0.1:3000/api/health")
+        openstack_probe = self._probe_http("http://127.0.0.1/dashboard/")
         return {
             "docker_available": bool(env["tool_paths"].get("docker")),
             "metrics_exporter": metrics_probe,
@@ -288,6 +320,12 @@ class SdnRuntimeService:
             "prometheus": prometheus_probe,
             "grafana": grafana_probe,
             "views": [
+                {
+                    "name": "OpenStack Horizon",
+                    "url": "http://127.0.0.1/dashboard/",
+                    "reachable": bool(openstack_probe.get("reachable")),
+                    "status": "live" if openstack_probe.get("reachable") else "optional",
+                },
                 {
                     "name": "Prometheus",
                     "url": "http://127.0.0.1:9090/",
@@ -319,6 +357,7 @@ class SdnRuntimeService:
         process = self.lab_process
         running = bool(process and process.poll() is None)
         controller_probe = self._probe_tcp("127.0.0.1", 6653)
+        controller_log = self._read_tail(self.ryu_log_path)
         return {
             "running": running,
             "interactive": False,
@@ -327,14 +366,20 @@ class SdnRuntimeService:
             "pid": process.pid if running and process else None,
             "exit_code": None if running or process is None else process.returncode,
             "controller_probe": controller_probe,
-            "supported": env["linux_runtime"] and bool(env["tool_paths"].get("ryu-manager")) and bool(env["tool_paths"].get("mn")),
+            "supported": env["linux_runtime"] and env["ryu_runtime_ready"] and bool(env["tool_paths"].get("mn")),
             "last_command": self.lab_last_command or commands[0]["command"],
             "last_error": self.lab_last_error,
             "last_result": self.lab_last_result,
             "lab_log_path": str(self.lab_log_path),
             "ryu_log_path": str(self.ryu_log_path),
             "lab_log_tail": self._read_tail(self.lab_log_path),
-            "ryu_log_tail": self._read_tail(self.ryu_log_path),
+            "ryu_log_tail": controller_log,
+            "controller_window": {
+                "status": "live" if controller_probe.get("reachable") else "offline",
+                "port": 6653,
+                "recent_logs": [line for line in controller_log.splitlines() if line.strip()][-6:],
+                "last_error": self.lab_last_error,
+            },
         }
 
     def _openflow_status(

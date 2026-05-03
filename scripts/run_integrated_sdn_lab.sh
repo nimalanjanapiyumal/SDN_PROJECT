@@ -12,15 +12,33 @@ CONTROLLER_PORT="${ADAPTIVE_CONTROLLER_PORT:-6653}"
 RYU_LOG="${ADAPTIVE_RYU_LOG:-$REPO_ROOT/logs/ryu_integrated.log}"
 mkdir -p "$(dirname "$RYU_LOG")"
 
-command -v ryu-manager >/dev/null 2>&1 || { echo "ryu-manager is required. Install Ryu in Ubuntu/WSL/Linux first."; exit 1; }
 command -v mn >/dev/null 2>&1 || { echo "Mininet is required. Install mininet and Open vSwitch first."; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required."; exit 1; }
+
+if ! command -v ryu-manager >/dev/null 2>&1; then
+  if ! python3 - <<'PY' >/dev/null 2>&1
+import ryu  # noqa: F401
+PY
+  then
+    echo "Ryu is required. Install ryu-manager or the Python ryu package first."
+    exit 1
+  fi
+fi
 
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 export ADAPTIVE_API_URL="${ADAPTIVE_API_URL:-http://127.0.0.1:8080}"
 export ADAPTIVE_RULE_SYNC_INTERVAL="${ADAPTIVE_RULE_SYNC_INTERVAL:-5}"
 
 echo "Starting Ryu controller with integrated rule sync: $RYU_APP"
-ryu-manager --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP" >"$RYU_LOG" 2>&1 &
+if python3 - <<'PY' >/dev/null 2>&1
+import ryu  # noqa: F401
+PY
+then
+  CONTROLLER_CMD=(python3 -m ryu.cmd.manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")
+else
+  CONTROLLER_CMD=(ryu-manager --verbose --observe-links --ofp-tcp-listen-port "$CONTROLLER_PORT" "$RYU_APP")
+fi
+"${CONTROLLER_CMD[@]}" >"$RYU_LOG" 2>&1 &
 RYU_PID="$!"
 
 cleanup() {
@@ -30,7 +48,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 - <<PY
+if ! python3 - <<PY
 import socket
 import sys
 import time
@@ -52,6 +70,11 @@ while time.time() < deadline:
 print(f"Ryu controller failed to open port $CONTROLLER_PORT: {last_error}", file=sys.stderr)
 sys.exit(1)
 PY
+then
+  echo "Controller startup failed. Recent Ryu log output:"
+  tail -n 120 "$RYU_LOG" || true
+  exit 1
+fi
 
 if ! kill -0 "$RYU_PID" >/dev/null 2>&1; then
   echo "Ryu controller exited before Mininet startup. Recent log output:"

@@ -6,7 +6,7 @@ import shutil
 import time
 import subprocess
 import urllib.request
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST, start_http_server
 from fastapi.responses import FileResponse, Response
@@ -33,6 +33,7 @@ from adaptive_cloud_platform.models import (
     IntegratedAutomationRequest,
     IntegratedRunRequest,
     MonitoringStackRequest,
+    OperatorLoginRequest,
     IntentRequest,
     PolicyEnforcementRequest,
     ResourcePlanRequest,
@@ -50,6 +51,7 @@ from adaptive_cloud_platform.services.monitoring_ml_service import MonitoringMLS
 from adaptive_cloud_platform.services.intent_controller_service import IntentControllerService
 from adaptive_cloud_platform.services.security_service import SecurityService
 from adaptive_cloud_platform.services.automation_service import SystemAutomationService
+from adaptive_cloud_platform.services.operator_auth_service import OperatorAuthService
 from adaptive_cloud_platform.services.sdn_runtime_service import SdnRuntimeService
 
 runtime = get_runtime_config()
@@ -64,6 +66,7 @@ security_service = SecurityService(state)
 integrated_run_history: list[dict] = []
 automation_service: SystemAutomationService | None = None
 sdn_runtime_service = SdnRuntimeService(Path.cwd(), api_url=runtime.controller_url, metrics_port=runtime.prometheus_exporter_port)
+operator_auth_service = OperatorAuthService()
 
 app = FastAPI(title='Adaptive Cloud SDN Integrated API', version='1.0.0')
 FRONTEND_DIR = Path(__file__).resolve().parent / 'frontend'
@@ -126,6 +129,21 @@ def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+@app.post('/api/v1/auth/login')
+def auth_login(payload: OperatorLoginRequest) -> dict:
+    return operator_auth_service.login(payload.username, payload.password)
+
+
+@app.get('/api/v1/auth/status')
+def auth_status(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
+    return operator_auth_service.status(x_operator_token)
+
+
+@app.post('/api/v1/auth/logout')
+def auth_logout(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
+    return operator_auth_service.logout(x_operator_token)
+
+
 def _record_decision_metrics(decision: dict | None) -> None:
     if decision:
         METRIC_DECISIONS.inc()
@@ -141,6 +159,14 @@ def _record_component4_metrics(result: dict | None) -> None:
     METRIC_COMPONENT4_ACTIVE_RULES.set(float(len(security_service.active_rules())))
     if result.get('latency_ms') is not None:
         METRIC_COMPONENT4_MITIGATION_LATENCY.set(float(result.get('latency_ms') or 0.0))
+
+
+def _require_operator_session(x_operator_token: str | None = Header(default=None, alias='X-Operator-Token')) -> dict:
+    token = x_operator_token if isinstance(x_operator_token, str) else None
+    session = operator_auth_service.validate(token)
+    if not session:
+        raise HTTPException(status_code=401, detail='Operator login required')
+    return session
 
 
 def _probe_http(url: str, timeout: float = 1.5) -> dict:
@@ -546,7 +572,10 @@ def integrated_status() -> dict:
 
 
 @app.post('/api/v1/integrated/run')
-def integrated_run(payload: IntegratedRunRequest) -> dict:
+def integrated_run(
+    payload: IntegratedRunRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     return _execute_integrated_run(payload, source='manual')
 
 
@@ -556,14 +585,19 @@ def automation_status() -> dict:
 
 
 @app.post('/api/v1/automation/start')
-def automation_start(payload: IntegratedAutomationRequest) -> dict:
+def automation_start(
+    payload: IntegratedAutomationRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     status = automation_service.start(payload)
     METRIC_AUTOMATION_ENABLED.set(1.0 if status.get('running') else 0.0)
     return status
 
 
 @app.post('/api/v1/automation/stop')
-def automation_stop() -> dict:
+def automation_stop(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     status = automation_service.stop()
     METRIC_AUTOMATION_ENABLED.set(1.0 if status.get('running') else 0.0)
     return status
@@ -622,7 +656,10 @@ def sdn_status() -> dict:
 
 
 @app.post('/api/v1/sdn/start')
-def sdn_start(payload: SdnLabStartRequest) -> dict:
+def sdn_start(
+    payload: SdnLabStartRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = sdn_runtime_service.start_lab(
         scenario=payload.scenario,
         duration_sec=payload.duration_sec,
@@ -637,7 +674,9 @@ def sdn_start(payload: SdnLabStartRequest) -> dict:
 
 
 @app.post('/api/v1/sdn/stop')
-def sdn_stop() -> dict:
+def sdn_stop(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = sdn_runtime_service.stop_lab()
     return {
         'action': result,
@@ -646,7 +685,10 @@ def sdn_stop() -> dict:
 
 
 @app.post('/api/v1/monitoring/start')
-def monitoring_start(_: MonitoringStackRequest) -> dict:
+def monitoring_start(
+    _: MonitoringStackRequest,
+    __: dict = Depends(_require_operator_session),
+) -> dict:
     result = sdn_runtime_service.start_monitoring()
     return {
         'action': result,
@@ -655,7 +697,9 @@ def monitoring_start(_: MonitoringStackRequest) -> dict:
 
 
 @app.post('/api/v1/monitoring/stop')
-def monitoring_stop() -> dict:
+def monitoring_stop(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = sdn_runtime_service.stop_monitoring()
     return {
         'action': result,
@@ -913,7 +957,10 @@ def component_four_segmentation_policies() -> dict:
 
 
 @app.post('/api/v1/component-4/segmentation/policies')
-def component_four_add_segmentation_policy(payload: ComponentFourSegmentationPolicyRequest) -> dict:
+def component_four_add_segmentation_policy(
+    payload: ComponentFourSegmentationPolicyRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     return security_service.add_segmentation_policy(
         payload.src_zone,
         payload.dst_zone,
@@ -924,12 +971,17 @@ def component_four_add_segmentation_policy(payload: ComponentFourSegmentationPol
 
 
 @app.post('/api/v1/component-4/access')
-def component_four_access(payload: SecurityActionRequest) -> dict:
+def component_four_access(
+    payload: SecurityActionRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     return post_security_action(payload)
 
 
 @app.post('/api/v1/component-4/segmentation/enforce')
-def component_four_enforce_segmentation() -> dict:
+def component_four_enforce_segmentation(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = security_service.enforce_segmentation_policies()
     for rule in result.get('rules', []):
         METRIC_COMPONENT4_SECURITY_RULES.labels(action=str(rule.get('action', 'segment'))).inc()
@@ -953,7 +1005,10 @@ def component_four_cti_indicators() -> dict:
 
 
 @app.post('/api/v1/component-4/cti/indicators')
-def component_four_add_indicator(payload: ComponentFourIndicatorRequest) -> dict:
+def component_four_add_indicator(
+    payload: ComponentFourIndicatorRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = security_service.add_indicator(
         payload.value,
         payload.ioc_type,
@@ -966,14 +1021,19 @@ def component_four_add_indicator(payload: ComponentFourIndicatorRequest) -> dict
 
 
 @app.post('/api/v1/component-4/cti/fetch')
-def component_four_fetch_cti() -> dict:
+def component_four_fetch_cti(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = security_service.fetch_cti_feed()
     METRIC_COMPONENT4_CTI_EVENTS.labels(result='feed_fetch').inc()
     return result
 
 
 @app.post('/api/v1/component-4/cti/block')
-def component_four_block_indicator(payload: ComponentFourCtiBlockRequest) -> dict:
+def component_four_block_indicator(
+    payload: ComponentFourCtiBlockRequest,
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     result = security_service.block_indicator(payload.value, payload.reason or '')
     enforcement = post_security_action(SecurityActionRequest(**result['security_action']))
     result['component_4_enforcement'] = enforcement
@@ -1005,7 +1065,9 @@ def component_four_scenario(scenario_name: str) -> dict:
 
 
 @app.post('/api/v1/component-4/reset')
-def component_four_reset() -> dict:
+def component_four_reset(
+    _: dict = Depends(_require_operator_session),
+) -> dict:
     return security_service.reset_runtime()
 
 

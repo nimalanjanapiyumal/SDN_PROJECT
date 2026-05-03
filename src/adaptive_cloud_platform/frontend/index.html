@@ -44,6 +44,16 @@
             <h1>Adaptive SDN Console</h1>
           </div>
           <div class="topbar-actions">
+            <div class="auth-strip" id="authStrip">
+              <input id="operatorUser" type="text" value="admin" aria-label="Operator username" />
+              <input id="operatorPass" type="password" value="admin123" aria-label="Operator password" />
+              <button class="secondary-button" id="operatorLoginBtn" type="button">Login</button>
+              <button class="secondary-button subtle" id="operatorLogoutBtn" type="button">Logout</button>
+              <span class="status-pill" id="authStatus">
+                <span class="status-dot"></span>
+                Locked
+              </span>
+            </div>
             <select class="scenario-select" id="integratedScenario" aria-label="Integrated scenario">
               <option value="mixed">Mixed</option>
               <option value="normal">Normal</option>
@@ -128,7 +138,6 @@
         <section class="sdn-ops-section" data-workspace="component-1" aria-label="SDN runtime and observability">
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">Linux SDN runtime</p>
               <h2>Lab Control</h2>
             </div>
             <div class="sdn-toolbar">
@@ -159,31 +168,26 @@
 
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">OpenFlow topology</p>
-              <h2>Network View</h2>
+              <h2>Controller</h2>
             </div>
             <div id="sdnTopologyView" class="sdn-topology-view"></div>
+            <div id="sdnControllerWindow" class="sdn-controller-window"></div>
           </div>
 
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">Rule sync</p>
-              <h2>OpenFlow Rules</h2>
+              <h2>Rules</h2>
             </div>
             <div id="sdnOpenflowList" class="sdn-openflow-list"></div>
           </div>
 
           <div class="runtime-panel">
             <div class="section-title">
-              <p class="eyebrow">Prometheus and Grafana</p>
-              <h2>Views</h2>
+              <h2>Monitoring</h2>
             </div>
             <div id="sdnMonitoringViews" class="sdn-monitoring-views"></div>
             <div id="sdnCommandList" class="sdn-command-list"></div>
-            <details class="payload-drawer">
-              <summary>Runtime</summary>
-              <pre id="sdnRuntimeJson">{}</pre>
-            </details>
+            <pre id="sdnRuntimeJson" class="workspace-hidden">{}</pre>
           </div>
         </section>
 
@@ -238,26 +242,6 @@
               </div>
             </div>
 
-            <div class="component-one-map" aria-label="Component 1 use-case pipeline">
-              <div class="actor actor-user">User</div>
-              <div class="pipe-node node-request">Request</div>
-              <div class="pipe-node node-analyze">Analyze</div>
-              <div class="pipe-node node-rr">RR</div>
-              <div class="pipe-node node-ga">GA</div>
-              <div class="pipe-node node-update">Sync</div>
-              <div class="pipe-node node-monitoring">Monitor</div>
-              <div class="pipe-node node-allocate">Allocate</div>
-              <div class="actor actor-controller">Controller</div>
-              <div class="actor actor-flow">Flow</div>
-              <div class="actor actor-switch">Switches</div>
-              <span class="connector c1"></span>
-              <span class="connector c2"></span>
-              <span class="connector c3"></span>
-              <span class="connector c4"></span>
-              <span class="connector c5"></span>
-              <span class="connector c6"></span>
-              <span class="connector c7"></span>
-            </div>
           </div>
 
           <aside class="decision-panel">
@@ -403,14 +387,6 @@
             </div>
             <div id="flowRuleList" class="flow-rule-list"></div>
           </div>
-        </section>
-
-        <section class="api-matrix" data-workspace="component-1" aria-label="Component API matrix">
-          <div class="section-title">
-            <p class="eyebrow">Implementation map</p>
-            <h2>API Coverage</h2>
-          </div>
-          <div id="apiMatrix" class="matrix-grid"></div>
         </section>
 
         <section class="component-two-section" data-workspace="component-2" aria-label="Component 2 monitoring and ML workspace">

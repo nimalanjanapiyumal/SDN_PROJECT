@@ -2087,6 +2087,18 @@ textarea {
   gap: 0.75rem;
 }
 
+.auth-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.auth-strip input {
+  min-width: 108px;
+  max-width: 132px;
+}
+
 .sdn-status-card {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.82);
@@ -2152,6 +2164,58 @@ textarea {
 .sdn-monitoring-views {
   display: grid;
   gap: 0.7rem;
+}
+
+.sdn-controller-window {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.sdn-controller-summary,
+.sdn-controller-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.sdn-controller-summary span,
+.controller-link {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: #f7faf5;
+  font-size: 0.82rem;
+}
+
+.controller-link.live {
+  border-color: rgba(33, 129, 78, 0.45);
+}
+
+.controller-link.idle,
+.controller-link.offline {
+  border-color: rgba(204, 58, 36, 0.24);
+}
+
+.sdn-controller-alert {
+  border: 1px solid rgba(204, 58, 36, 0.24);
+  border-radius: 8px;
+  background: rgba(204, 58, 36, 0.08);
+  color: #7f2d1f;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.sdn-controller-log {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  max-height: 160px;
+  overflow: auto;
 }
 
 .sdn-openflow-rule,
