@@ -35,12 +35,13 @@ class AdaptiveCloudTopo(Topo):
         self.addLink(h3, s1, **link_kwargs(100, "1ms"))
         self.addLink(h4, s4, **link_kwargs(100, "1ms"))
 
-        # Redundant SDN fabric.
+        # Linear SDN fabric to prevent broadcast storms.
         self.addLink(s1, s2, **link_kwargs(20, "5ms"))
-        self.addLink(s2, s4, **link_kwargs(20, "5ms"))
-        self.addLink(s1, s3, **link_kwargs(20, "5ms"))
-        self.addLink(s3, s4, **link_kwargs(20, "5ms"))
         self.addLink(s2, s3, **link_kwargs(15, "3ms"))
+        self.addLink(s3, s4, **link_kwargs(20, "5ms"))
+        # Redundant links disabled to prevent loops with basic learning switch
+        # self.addLink(s2, s4, **link_kwargs(20, "5ms"))
+        # self.addLink(s1, s3, **link_kwargs(20, "5ms"))
 
 
 def _start_background(host, label: str, command: str) -> None:
