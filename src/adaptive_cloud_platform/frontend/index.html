@@ -7,8 +7,46 @@
     <link rel="icon" href="/frontend/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/frontend/assets/css/styles.css" />
   </head>
-  <body>
-    <div class="app-shell">
+  <body class="login-locked">
+    <section class="login-gate" id="loginGate" aria-label="Operator login">
+      <div class="login-gate-shell">
+        <div class="login-gate-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" focusable="false">
+              <path d="M16 3 28 10v12l-12 7-12-7V10L16 3Zm0 4.2L8 11.8v8.4l8 4.6 8-4.6v-8.4l-8-4.6Z" />
+              <path d="M16 10.5 21 13v6l-5 2.8L11 19v-6l5-2.5Z" />
+            </svg>
+          </span>
+          <div>
+            <strong>Adaptive SDN</strong>
+            <small>Operator Access</small>
+          </div>
+        </div>
+        <form class="login-gate-card" id="loginGateForm">
+          <div class="login-gate-copy">
+            <h1>Operator Login</h1>
+            <p>Sign in to access monitoring, controller operations, security actions, and OpenStack controls.</p>
+          </div>
+          <label>
+            Username
+            <input id="loginGateUser" type="text" value="admin" autocomplete="username" />
+          </label>
+          <label>
+            Password
+            <input id="loginGatePass" type="password" value="admin123" autocomplete="current-password" />
+          </label>
+          <button class="primary-button login-gate-button" id="loginGateBtn" type="submit">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M10 17 15 12 10 7v10Zm-7 5V2h18v20H3Z" />
+            </svg>
+            Sign In
+          </button>
+          <p class="login-gate-status" id="loginGateStatus">Operator login required.</p>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell">
       <aside class="sidebar" aria-label="Component navigation">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">
@@ -45,9 +83,9 @@
           </div>
           <div class="topbar-actions">
             <div class="auth-strip" id="authStrip">
-              <input id="operatorUser" type="text" value="admin" aria-label="Operator username" />
-              <input id="operatorPass" type="password" value="admin123" aria-label="Operator password" />
-              <button class="secondary-button" id="operatorLoginBtn" type="button">Login</button>
+              <input id="operatorUser" class="auth-input" type="text" value="admin" aria-label="Operator username" />
+              <input id="operatorPass" class="auth-input" type="password" value="admin123" aria-label="Operator password" />
+              <button class="secondary-button auth-login-action" id="operatorLoginBtn" type="button">Login</button>
               <button class="secondary-button subtle" id="operatorLogoutBtn" type="button">Logout</button>
               <span class="status-pill" id="authStatus">
                 <span class="status-dot"></span>

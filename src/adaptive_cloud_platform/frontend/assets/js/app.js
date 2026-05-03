@@ -26,7 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   bindEvents();
   renderComponentNav();
-  refreshAll();
+  renderAuthState();
+  refreshAll({ quiet: true });
   state.timer = window.setInterval(() => {
     if (state.autoRefresh) {
       refreshAll({ quiet: true });
@@ -36,6 +37,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function cacheElements() {
   [
+    "appShell",
+    "loginGate",
+    "loginGateForm",
+    "loginGateUser",
+    "loginGatePass",
+    "loginGateBtn",
+    "loginGateStatus",
     "apiBase",
     "apiStatus",
     "refreshBtn",
@@ -160,7 +168,11 @@ function cacheElements() {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", () => refreshAll());
-  els.operatorLoginBtn.addEventListener("click", loginOperator);
+  els.loginGateForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    loginOperator("gate");
+  });
+  els.operatorLoginBtn.addEventListener("click", () => loginOperator("topbar"));
   els.operatorLogoutBtn.addEventListener("click", logoutOperator);
   els.startAutomationBtn.addEventListener("click", startSystemAutomation);
   els.stopAutomationBtn.addEventListener("click", stopSystemAutomation);
@@ -258,26 +270,28 @@ async function refreshAll(options = {}) {
   }
 }
 
-async function loginOperator() {
-  const payload = {
-    username: valueOf("operatorUser"),
-    password: valueOf("operatorPass")
-  };
+async function loginOperator(source = "topbar") {
+  const payload = operatorCredentials(source);
   try {
+    setLoginGateStatus("Signing in...", false);
     const result = await apiRequest("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),
       headers: {}
     });
     if (!result.authenticated || !result.token) {
+      setLoginGateStatus(result.error || "Login failed", true);
       showToast(result.error || "Login failed", true);
       return;
     }
     state.authToken = result.token;
     window.localStorage.setItem("adaptiveOperatorToken", result.token);
+    syncOperatorInputs(payload);
+    setLoginGateStatus("Authenticated", false);
     showToast("Operator login successful");
     await refreshAll({ quiet: true });
   } catch (error) {
+    setLoginGateStatus(error.message, true);
     showToast(error.message, true);
   }
 }
@@ -294,6 +308,7 @@ async function logoutOperator() {
     state.authToken = "";
     state.auth = { authenticated: false };
     window.localStorage.removeItem("adaptiveOperatorToken");
+    setLoginGateStatus("Operator login required.", false);
     renderAuthState();
     showToast("Operator logged out");
   }
@@ -357,12 +372,28 @@ function renderAuthState() {
   const lab = state.sdnRuntime?.lab || {};
   const openstack = state.sdnRuntime?.openstack || {};
   const openstackBusy = Boolean(openstack.operation_running);
+  document.body.classList.toggle("login-locked", !authenticated);
+  document.body.classList.toggle("authenticated", authenticated);
+  els.loginGate.hidden = authenticated;
   els.authStatus.className = `status-pill ${authenticated ? "online" : "offline"}`;
   els.authStatus.innerHTML = `<span class="status-dot"></span>${escapeHtml(authenticated ? `Operator ${auth.username || "admin"}` : "Locked")}`;
+  els.operatorUser.hidden = authenticated;
+  els.operatorPass.hidden = authenticated;
+  els.operatorLoginBtn.hidden = authenticated;
+  els.operatorLogoutBtn.hidden = !authenticated;
   els.operatorLoginBtn.disabled = authenticated;
   els.operatorLogoutBtn.disabled = !authenticated;
   els.operatorUser.disabled = authenticated;
   els.operatorPass.disabled = authenticated;
+  els.loginGateBtn.disabled = authenticated;
+  els.loginGateUser.disabled = authenticated;
+  els.loginGatePass.disabled = authenticated;
+  if (authenticated) {
+    syncOperatorInputs({ username: auth.username || valueOf("operatorUser") || "admin", password: valueOf("operatorPass") || valueOf("loginGatePass") || "" });
+    setLoginGateStatus(`Signed in as ${auth.username || "admin"}`, false);
+  } else if (!state.authToken) {
+    setLoginGateStatus("Operator login required.", false);
+  }
   els.startAutomationBtn.disabled = !authenticated || Boolean(automation.running);
   els.stopAutomationBtn.disabled = !authenticated || !automation.running;
   els.runIntegratedBtn.disabled = !authenticated;
@@ -430,6 +461,41 @@ function renderComponentNav() {
       renderWorkspaceVisibility();
     });
   });
+}
+
+function operatorCredentials(source = "topbar") {
+  const preferredUser = source === "gate" ? valueOf("loginGateUser") : valueOf("operatorUser");
+  const preferredPass = source === "gate" ? valueOf("loginGatePass") : valueOf("operatorPass");
+  const username = preferredUser || valueOf("loginGateUser") || valueOf("operatorUser");
+  const password = preferredPass || valueOf("loginGatePass") || valueOf("operatorPass");
+  return { username, password };
+}
+
+function syncOperatorInputs(credentials = {}) {
+  const username = credentials.username || "";
+  const password = credentials.password || "";
+  if (els.operatorUser) {
+    els.operatorUser.value = username;
+  }
+  if (els.loginGateUser) {
+    els.loginGateUser.value = username;
+  }
+  if (password) {
+    if (els.operatorPass) {
+      els.operatorPass.value = password;
+    }
+    if (els.loginGatePass) {
+      els.loginGatePass.value = password;
+    }
+  }
+}
+
+function setLoginGateStatus(message, isError = false) {
+  if (!els.loginGateStatus) {
+    return;
+  }
+  els.loginGateStatus.textContent = message || "";
+  els.loginGateStatus.classList.toggle("error", Boolean(isError));
 }
 
 function renderWorkspaceVisibility() {

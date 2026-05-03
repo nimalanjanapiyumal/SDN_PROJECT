@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import collections
+import collections.abc
 import ipaddress
 import json
 import os
 import time
 import urllib.request
 from typing import Any, Dict, Iterable, Optional
+
+# Ryu pulls in eventlet and older dns/eventlet stacks can still reference the
+# pre-3.10 collections aliases. Patch them before importing Ryu so the Linux
+# SDN lab remains compatible with older distro packages.
+for _alias in ("Mapping", "MutableMapping", "Sequence", "MutableSequence", "MutableSet"):
+    if not hasattr(collections, _alias):
+        setattr(collections, _alias, getattr(collections.abc, _alias))
+
+# Avoid eventlet greendns on Python 3.10+ where older dnspython/eventlet combos
+# can fail during controller import before the OpenFlow port ever binds.
+os.environ.setdefault("EVENTLET_NO_GREENDNS", "yes")
 
 from ryu.base import app_manager
 from ryu.controller import handler, ofp_event

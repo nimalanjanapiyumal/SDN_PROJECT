@@ -22,6 +22,9 @@ def test_frontend_assets_exist():
     assert "componentFourServerAnalysis" in content
     assert "componentFourRuleStatus" in content
     assert "componentFourRuleList" in content
+    assert "loginGate" in content
+    assert "loginGateForm" in content
+    assert "loginGateBtn" in content
     assert "operatorLoginBtn" in content
     assert "sdnTopologyView" in content
     assert "sdnControllerWindow" in content

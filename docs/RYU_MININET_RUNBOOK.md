@@ -64,6 +64,15 @@ This performs the following checks in order:
 6. Starts only the Ryu controller and waits for the OpenFlow port to bind
 7. Prints the recent Ryu log if startup fails
 
+The controller wrapper also forces:
+
+```bash
+export EVENTLET_NO_GREENDNS=yes
+```
+
+and applies Python 3.10 compatibility aliases for older `eventlet` / `dnspython`
+combinations that still reference `collections.MutableMapping`.
+
 To keep the controller running for manual inspection:
 
 ```bash

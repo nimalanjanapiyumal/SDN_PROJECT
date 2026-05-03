@@ -36,6 +36,7 @@ python3 -m py_compile "$RYU_APP"
 
 echo "[4/7] Controller app imports"
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
+export EVENTLET_NO_GREENDNS="${EVENTLET_NO_GREENDNS:-yes}"
 python3 - <<PY
 import importlib.util
 app_path = "$RYU_APP"
