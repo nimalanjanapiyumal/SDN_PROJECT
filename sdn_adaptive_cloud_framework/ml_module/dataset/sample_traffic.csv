@@ -1,0 +1,11 @@
+latency_ms,throughput_mbps,packet_loss,cpu_usage,memory_usage,flow_count,label
+12,950,0.1,30,40,80,normal
+20,920,0.2,35,45,90,normal
+25,890,0.3,40,50,110,normal
+180,200,4.0,90,80,400,congestion
+220,150,5.5,92,82,450,congestion
+260,120,7.0,95,85,500,congestion
+40,800,0.5,55,60,150,normal
+350,80,9.0,98,90,700,anomaly
+400,60,11.0,99,92,800,anomaly
+60,700,0.6,60,65,180,normal

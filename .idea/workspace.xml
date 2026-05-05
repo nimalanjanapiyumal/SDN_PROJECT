@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init3d" />
+    <list default="true" id="c9787fa3-595f-467d-87da-ce7786ec5ecf" name="Changes" comment="init3dd">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -119,7 +121,23 @@
       <option name="project" value="LOCAL" />
       <updated>1777835004249</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="init3d">
+      <option name="closed" value="true" />
+      <created>1777987228689</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1777987228689</updated>
+    </task>
+    <task id="LOCAL-00009" summary="init3dd">
+      <option name="closed" value="true" />
+      <created>1777987245294</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1777987245294</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -127,6 +145,7 @@
     <MESSAGE value="init2" />
     <MESSAGE value="init3" />
     <MESSAGE value="init3d" />
-    <option name="LAST_COMMIT_MESSAGE" value="init3d" />
+    <MESSAGE value="init3dd" />
+    <option name="LAST_COMMIT_MESSAGE" value="init3dd" />
   </component>
 </project>

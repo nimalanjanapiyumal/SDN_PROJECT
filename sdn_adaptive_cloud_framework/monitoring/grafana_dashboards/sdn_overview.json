@@ -1,0 +1,49 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active Flows",
+      "targets": [{"expr": "sdn_active_flows"}],
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4}
+    },
+    {
+      "type": "stat",
+      "title": "Active Intents",
+      "targets": [{"expr": "sdn_active_intents"}],
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4}
+    },
+    {
+      "type": "stat",
+      "title": "Known Hosts",
+      "targets": [{"expr": "sdn_known_hosts"}],
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4}
+    },
+    {
+      "type": "stat",
+      "title": "Switches",
+      "targets": [{"expr": "sdn_switches"}],
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4}
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency (ms)",
+      "targets": [{"expr": "sdn_context_latency_ms"}],
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Threat / Congestion levels",
+      "targets": [
+        {"expr": "sdn_context_threat_level", "legendFormat": "threat"},
+        {"expr": "sdn_context_congestion_level", "legendFormat": "congestion"}
+      ],
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8}
+    }
+  ],
+  "schemaVersion": 39,
+  "title": "SDN Adaptive Cloud Overview",
+  "uid": "sdn-overview",
+  "version": 1
+}
