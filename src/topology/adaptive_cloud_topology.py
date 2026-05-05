@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shlex
+import threading
 import time
+import urllib.error
+import urllib.request
 from typing import Iterable, List
 
 from mininet.cli import CLI
@@ -12,6 +17,8 @@ from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import OVSKernelSwitch, RemoteController
 from mininet.topo import Topo
+
+API_URL = os.environ.get("ADAPTIVE_API_URL", "http://127.0.0.1:8080").rstrip("/")
 
 
 class AdaptiveCloudTopo(Topo):
@@ -60,6 +67,86 @@ def _cleanup_host_processes(net: Mininet) -> None:
         host.cmd("pkill -9 -f '/dev/tcp/10.0.0.4' || true")
 
 
+def _post_json(path: str, payload: dict) -> None:
+    request = urllib.request.Request(
+        f"{API_URL}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2.5):
+            return
+    except urllib.error.URLError:
+        return
+    except Exception:
+        return
+
+
+def _notify_runtime(event_type: str, message: str, metadata: dict | None = None, severity: str = "info") -> None:
+    _post_json(
+        "/api/v1/sdn/events",
+        {
+            "event_type": event_type,
+            "source": "mininet",
+            "severity": severity,
+            "message": message,
+            "metadata": metadata or {},
+        },
+    )
+
+
+def _notify_security_alert(src_ip: str, threat_type: str, signature: str, severity: int = 1) -> None:
+    _post_json(
+        "/api/v1/component-4/cti/alert",
+        {
+            "src_ip": src_ip,
+            "signature": signature,
+            "severity": severity,
+            "threat_type": threat_type,
+        },
+    )
+
+
+def _schedule_callback(delay_sec: int, callback) -> None:
+    timer = threading.Timer(delay_sec, callback)
+    timer.daemon = True
+    timer.start()
+
+
+def _publish_topology_snapshot() -> None:
+    _notify_runtime(
+        "topology_snapshot",
+        "Mininet topology is live and synchronized with the GUI.",
+        metadata={
+            "switches": [
+                {"name": "s1", "role": "edge", "state": "live"},
+                {"name": "s2", "role": "fabric", "state": "live"},
+                {"name": "s3", "role": "fabric", "state": "live"},
+                {"name": "s4", "role": "edge", "state": "live"},
+            ],
+            "hosts": [
+                {"name": "h1", "ip": "10.0.0.1", "role": "traffic source", "switch": "s1"},
+                {"name": "h2", "ip": "10.0.0.2", "role": "traffic source", "switch": "s1"},
+                {"name": "h3", "ip": "10.0.0.3", "role": "scanner / attack", "switch": "s1"},
+                {"name": "h4", "ip": "10.0.0.4", "role": "service sink", "switch": "s4"},
+            ],
+            "services": [
+                {"name": "service-sink", "ip": "10.0.0.4", "state": "live", "note": "http + iperf3"},
+            ],
+            "links": [
+                {"from": "ryu", "to": "s1", "kind": "control"},
+                {"from": "ryu", "to": "s2", "kind": "control"},
+                {"from": "ryu", "to": "s3", "kind": "control"},
+                {"from": "ryu", "to": "s4", "kind": "control"},
+                {"from": "s1", "to": "s2", "kind": "fabric"},
+                {"from": "s2", "to": "s3", "kind": "fabric"},
+                {"from": "s3", "to": "s4", "kind": "fabric"},
+            ],
+        },
+    )
+
+
 def _start_services(net: Mininet) -> None:
     h4 = net.get("h4")
     _start_background(h4, "http", "python3 -m http.server 8000")
@@ -75,6 +162,7 @@ def _warmup(net: Mininet) -> None:
 
 def _start_normal(net: Mininet, duration: int) -> None:
     h1, h2 = net.get("h1", "h2")
+    _notify_runtime("traffic_started", "Normal application traffic is running across the Mininet lab.", {"scenario": "normal"})
     _start_background(h1, "normal_iperf", f"iperf3 -c 10.0.0.4 -t {duration} -b 6M")
     _start_background(
         h2,
@@ -85,12 +173,15 @@ def _start_normal(net: Mininet, duration: int) -> None:
 
 def _start_congestion(net: Mininet, duration: int) -> None:
     h1, h2 = net.get("h1", "h2")
+    _notify_runtime("traffic_started", "Congestion scenario launched inside Mininet.", {"scenario": "congestion"}, severity="warning")
     _start_background(h1, "congestion_h1", f"iperf3 -c 10.0.0.4 -u -b 18M -t {duration}")
     _start_background(h2, "congestion_h2", f"iperf3 -c 10.0.0.4 -u -b 18M -t {duration}")
 
 
 def _start_ddos(net: Mininet, duration: int) -> None:
     h3 = net.get("h3")
+    _notify_runtime("attack_started", "DDoS traffic started from h3 toward the service sink.", {"scenario": "ddos", "attack_type": "DDoS", "src_ip": "10.0.0.3", "dst_ip": "10.0.0.4"}, severity="critical")
+    _notify_security_alert("10.0.0.3", "DDoS", "Mininet DDoS traffic detected", severity=1)
     attack_script = f"""
 python3 - <<'PY'
 import os
@@ -110,6 +201,8 @@ PY
 
 def _start_port_scan(net: Mininet, duration: int) -> None:
     h3 = net.get("h3")
+    _notify_runtime("attack_started", "Port scanning started from h3 toward the service sink.", {"scenario": "port_scan", "attack_type": "Port Scan", "src_ip": "10.0.0.3", "dst_ip": "10.0.0.4"}, severity="warning")
+    _notify_security_alert("10.0.0.3", "Port Scan", "Mininet port scan detected", severity=2)
     scan_script = f"""
 python3 - <<'PY'
 import socket
@@ -138,6 +231,7 @@ def start_scenario(net: Mininet, scenario: str, duration: int) -> None:
     scenario = scenario.lower()
     if scenario == "idle":
         info("*** Idle scenario selected; only services are running\n")
+        _notify_runtime("traffic_started", "Idle service-only Mininet scenario is active.", {"scenario": "idle"})
         return
     if scenario == "normal":
         _start_normal(net, duration)
@@ -153,11 +247,13 @@ def start_scenario(net: Mininet, scenario: str, duration: int) -> None:
         return
     if scenario == "mixed":
         _start_normal(net, duration)
+        _notify_runtime("traffic_started", "Mixed Mininet scenario started. Congestion and attacks will be staged.", {"scenario": "mixed"}, severity="warning")
         _start_background(
             net.get("h2"),
             "staged_congestion",
             f"sleep 10 && iperf3 -c 10.0.0.4 -u -b 18M -t {max(duration - 10, 10)}",
         )
+        _schedule_callback(10, lambda: _notify_runtime("traffic_started", "Staged congestion phase is now active.", {"scenario": "mixed", "phase": "congestion"}, severity="warning"))
         _start_background(
             net.get("h3"),
             "staged_scan",
@@ -179,6 +275,10 @@ def start_scenario(net: Mininet, scenario: str, duration: int) -> None:
             f"        s.close()\n"
             f"PY",
         )
+        _schedule_callback(20, lambda: (
+            _notify_runtime("attack_started", "Staged port scan phase is now active.", {"scenario": "mixed", "phase": "port_scan", "attack_type": "Port Scan", "src_ip": "10.0.0.3", "dst_ip": "10.0.0.4"}, severity="warning"),
+            _notify_security_alert("10.0.0.3", "Port Scan", "Mixed scenario port scan detected", severity=2)
+        ))
         _start_background(
             net.get("h3"),
             "staged_ddos",
@@ -191,6 +291,10 @@ def start_scenario(net: Mininet, scenario: str, duration: int) -> None:
             f"    sock.sendto(payload,('10.0.0.4', random.randint(1024,65535)))\n"
             f"PY",
         )
+        _schedule_callback(35, lambda: (
+            _notify_runtime("attack_started", "Staged DDoS phase is now active.", {"scenario": "mixed", "phase": "ddos", "attack_type": "DDoS", "src_ip": "10.0.0.3", "dst_ip": "10.0.0.4"}, severity="critical"),
+            _notify_security_alert("10.0.0.3", "DDoS", "Mixed scenario DDoS detected", severity=1)
+        ))
         return
     raise ValueError(f"Unknown scenario: {scenario}")
 
@@ -229,6 +333,7 @@ def main() -> None:
     try:
         info("*** Starting Mininet topology\n")
         net.start()
+        _publish_topology_snapshot()
         time.sleep(4)
         _cleanup_host_processes(net)
         _start_services(net)

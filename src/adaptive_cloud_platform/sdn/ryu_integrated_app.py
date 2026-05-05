@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from typing import Any, Dict, Iterable, Optional
 
@@ -56,6 +57,11 @@ class IntegratedAdaptiveCloudController(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(datapath.ofproto.OFPP_CONTROLLER, datapath.ofproto.OFPCML_NO_BUFFER)]
         self._add_flow(datapath, priority=0, match=match, actions=actions)
         self.logger.info("Registered datapath %s and installed table-miss rule", datapath.id)
+        self._emit_runtime_event(
+            "switch_connected",
+            message=f"Switch s{datapath.id} connected to the integrated Ryu controller.",
+            metadata={"dpid": datapath.id, "switch": f"s{datapath.id}", "rules": 1},
+        )
 
     @handler.set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def state_change_handler(self, ev: Any) -> None:
@@ -65,6 +71,12 @@ class IntegratedAdaptiveCloudController(app_manager.RyuApp):
         elif ev.state == DEAD_DISPATCHER:
             self.datapaths.pop(datapath.id, None)
             self.mac_to_port.pop(datapath.id, None)
+            self._emit_runtime_event(
+                "switch_disconnected",
+                severity="warning",
+                message=f"Switch s{datapath.id} disconnected from the integrated Ryu controller.",
+                metadata={"dpid": datapath.id, "switch": f"s{datapath.id}"},
+            )
 
     @handler.set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev: Any) -> None:
@@ -154,6 +166,33 @@ class IntegratedAdaptiveCloudController(app_manager.RyuApp):
             self.logger.debug("Could not read %s from integrated API: %s", path, exc)
             return []
 
+    def _emit_runtime_event(
+        self,
+        event_type: str,
+        severity: str = "info",
+        message: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        request = urllib.request.Request(
+            f"{self.api_url}/api/v1/sdn/events",
+            data=json.dumps({
+                "event_type": event_type,
+                "source": "ryu",
+                "severity": severity,
+                "message": message,
+                "metadata": metadata or {},
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=1.5):
+                return
+        except urllib.error.URLError:
+            return
+        except Exception:
+            return
+
     def _install_controller_rules(self, datapath: Any, rules: list[dict]) -> None:
         parser = datapath.ofproto_parser
         for rule in rules:
@@ -172,6 +211,17 @@ class IntegratedAdaptiveCloudController(app_manager.RyuApp):
             self._add_flow(datapath, priority=priority, match=match, actions=actions, idle_timeout=idle_timeout, hard_timeout=hard_timeout)
             self.installed_rule_keys.add(rule_key)
             self.logger.info("Installed integrated rule %s on datapath %s", rule.get("id") or rule.get("name"), datapath.id)
+            self._emit_runtime_event(
+                "ryu_rule_installed",
+                message=f"Installed {rule.get('component') or 'integrated'} rule on s{datapath.id}.",
+                metadata={
+                    "dpid": datapath.id,
+                    "switch": f"s{datapath.id}",
+                    "rules": len([key for key in self.installed_rule_keys if key.startswith(f'{datapath.id}:')]),
+                    "rule_id": rule.get("id") or rule.get("name"),
+                    "component": rule.get("component"),
+                },
+            )
 
     def _component1_flow_to_rule(self, flow: dict) -> Optional[dict]:
         client_ip = flow.get("client_ip")

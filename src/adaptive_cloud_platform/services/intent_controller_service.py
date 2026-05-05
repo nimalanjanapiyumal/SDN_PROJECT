@@ -295,6 +295,65 @@ class IntentControllerService:
             "context": dict(self.context_state),
         }
 
+    def install_custom_rule(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._rule_sequence += 1
+        rule_id = str(payload.get("rule_id") or payload.get("id") or f"c3-manual-{self._rule_sequence:05d}")
+        flow_action = str(payload.get("flow_action") or payload.get("action") or "forward").lower()
+        switch = self._normalize_switch_name(payload.get("switch") or payload.get("dpid") or "s1")
+        proto = self._normalize_proto(payload.get("proto"))
+        match = dict(payload.get("match") or {})
+        if not match:
+            match = self._match(
+                src_ip=payload.get("src_ip"),
+                dst_ip=payload.get("dst_ip"),
+                proto=proto,
+                dst_port=payload.get("dst_port"),
+            )
+        actions = list(payload.get("actions") or [])
+        if not actions:
+            if flow_action in {"drop", "block", "deny", "quarantine"}:
+                actions = [{"type": "DROP"}]
+            else:
+                actions = [{"type": "OUTPUT", "port": "NORMAL"}]
+        semantic_action = payload.get("semantic_action") or (
+            "drop_manual_flow" if any(str(item.get("type", "")).upper() == "DROP" for item in actions)
+            else "forward_manual_flow"
+        )
+        rule = {
+            "id": rule_id,
+            "intent_id": payload.get("intent_id") or f"manual-flow::{rule_id}",
+            "intent_type": "manual",
+            "switch": switch,
+            "priority": self._clamp_int(payload.get("priority", 100), 0, 65535),
+            "semantic_action": semantic_action,
+            "action": flow_action,
+            "reason": payload.get("reason") or "manual flow installation",
+            "match": match,
+            "actions": actions,
+            "dfps": float(payload.get("dfps") or self.calculate_dfps(5, self.context_state)),
+            "context": dict(self.context_state),
+            "metadata": dict(payload.get("metadata") or {}),
+            "generated_reason": "manual_flow_install",
+            "ts": time.time(),
+        }
+        self.rules.append(rule)
+        self.rules = self.rules[-300:]
+        event = self._record_event("custom_flow_installed", {"rule": rule})
+        return {"accepted": True, "rule": rule, "event": event}
+
+    def delete_rule(self, rule_id: str) -> Dict[str, Any]:
+        normalized = str(rule_id or "").strip()
+        removed = [rule for rule in self.rules if str(rule.get("id") or "") == normalized]
+        if removed:
+            self.rules = [rule for rule in self.rules if str(rule.get("id") or "") != normalized]
+        event = self._record_event("flow_rule_deleted", {"rule_id": normalized, "removed": len(removed)})
+        return {
+            "accepted": bool(removed),
+            "rule_id": normalized,
+            "removed": len(removed),
+            "event": event,
+        }
+
     def active_rules(self) -> List[Dict[str, Any]]:
         latest_by_key: Dict[str, Dict[str, Any]] = {}
         for rule in self.rules:
@@ -642,6 +701,18 @@ class IntentControllerService:
             return "tcp"
         if text in {"17", "udp"}:
             return "udp"
+        return text
+
+    def _normalize_switch_name(self, value: Any) -> str:
+        if value is None:
+            return "s1"
+        text = str(value).strip().lower()
+        if not text:
+            return "s1"
+        if text.startswith("s"):
+            return text
+        if text.isdigit():
+            return f"s{text}"
         return text
 
     def _level_value(self, value: Any, default: float) -> float:

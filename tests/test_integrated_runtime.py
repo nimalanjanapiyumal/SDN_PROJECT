@@ -6,6 +6,7 @@ import pytest
 from adaptive_cloud_platform.app import (
     app,
     auth_logout,
+    auth_verify_otp,
     auth_status,
     automation_start,
     automation_status,
@@ -22,7 +23,32 @@ from adaptive_cloud_platform.app import (
     sdn_status,
     operator_auth_service,
 )
-from adaptive_cloud_platform.models import IntegratedAutomationRequest, IntegratedRunRequest, MonitoringStackRequest, OpenStackControlRequest, SdnLabStartRequest
+from adaptive_cloud_platform.models import (
+    IntegratedAutomationRequest,
+    IntegratedRunRequest,
+    MonitoringStackRequest,
+    OpenStackControlRequest,
+    OperatorOtpVerifyRequest,
+    SdnLabStartRequest,
+)
+
+
+def _login_with_otp(client) -> str:
+    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
+    assert login.status_code == 200
+    payload = login.json()
+    assert payload["otp_required"] is True
+    verify = client.post(
+        "/api/v1/auth/verify-otp",
+        json={
+            "challenge_id": payload["challenge_id"],
+            "otp_code": operator_auth_service.current_otp_code_for_testing(),
+        },
+    )
+    assert verify.status_code == 200
+    verified = verify.json()
+    assert verified["authenticated"] is True
+    return verified["token"]
 
 
 def test_integrated_run_chains_all_components():
@@ -93,8 +119,15 @@ def test_openstack_controls_return_runtime_payloads():
 
 def test_operator_auth_login_status_and_logout():
     result = operator_auth_service.login("admin", "admin123")
-    assert result["authenticated"] is True
-    token = result["token"]
+    assert result["authenticated"] is False
+    assert result["otp_required"] is True
+
+    verified = auth_verify_otp(OperatorOtpVerifyRequest(
+        challenge_id=result["challenge_id"],
+        otp_code=operator_auth_service.current_otp_code_for_testing(),
+    ))
+    assert verified["authenticated"] is True
+    token = verified["token"]
     assert auth_status(token)["authenticated"] is True
     assert auth_logout(token)["logged_out"] is True
 
@@ -114,9 +147,7 @@ def test_http_operator_auth_required_for_sdn_start():
     })
     assert unauthorized.status_code == 401
 
-    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
-    assert login.status_code == 200
-    token = login.json()["token"]
+    token = _login_with_otp(client)
 
     authorized = client.post(
         "/api/v1/sdn/start",
@@ -138,9 +169,7 @@ def test_http_bearer_auth_and_optional_control_bodies():
     from fastapi.testclient import TestClient
 
     client = TestClient(app)
-    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
-    assert login.status_code == 200
-    token = login.json()["token"]
+    token = _login_with_otp(client)
     headers = {"Authorization": f"Bearer {token}"}
 
     status = client.get("/api/v1/auth/status", headers=headers)
@@ -161,6 +190,26 @@ def test_http_bearer_auth_and_optional_control_bodies():
     logout = client.post("/api/v1/auth/logout", headers=headers)
     assert logout.status_code == 200
     assert logout.json()["logged_out"] is True
+
+
+def test_sdn_event_ingest_updates_runtime_status():
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+    response = client.post("/api/v1/sdn/events", json={
+        "event_type": "attack_blocked",
+        "source": "test",
+        "severity": "critical",
+        "message": "Synthetic DDoS was blocked",
+        "metadata": {"attack_type": "DDoS", "src_ip": "10.0.0.3", "blocked": True},
+    })
+    assert response.status_code == 200
+    status = client.get("/api/v1/sdn/status")
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["topology"]["alerts"]
+    assert payload["lab"]["controller_window"]["recent_attacks"]
 
 
 def test_sdn_lab_files_are_packaged():

@@ -230,6 +230,26 @@ class PolicyEnforcementRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class FlowInstallRequest(BaseModel):
+    rule_id: Optional[str] = None
+    switch: Optional[str] = None
+    dpid: Optional[str | int] = None
+    priority: int = Field(default=100, ge=0, le=65535)
+    flow_action: str = "forward"
+    semantic_action: Optional[str] = None
+    src_ip: Optional[str] = None
+    dst_ip: Optional[str] = None
+    proto: Optional[str] = None
+    dst_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    match: Dict[str, Any] = Field(default_factory=dict)
+    actions: List[Dict[str, Any]] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FlowDeleteRequest(BaseModel):
+    rule_id: str
+
+
 class SessionLoginRequest(BaseModel):
     user_id: str
     ip: str
@@ -245,3 +265,16 @@ class SessionVerifyRequest(BaseModel):
 class OperatorLoginRequest(BaseModel):
     username: str
     password: str
+
+
+class OperatorOtpVerifyRequest(BaseModel):
+    challenge_id: str
+    otp_code: str = Field(min_length=6, max_length=8)
+
+
+class SdnRuntimeEventRequest(BaseModel):
+    event_type: str
+    source: str = "runtime"
+    severity: str = "info"
+    message: str = ""
+    metadata: Dict[str, Any] = Field(default_factory=dict)

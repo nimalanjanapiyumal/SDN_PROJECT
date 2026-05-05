@@ -7,12 +7,14 @@ import shutil
 import time
 import subprocess
 import urllib.request
+import re
 from urllib.parse import parse_qs
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST, start_http_server
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
+from pydantic import ValidationError
 
 from adaptive_cloud_platform.config import get_runtime_config
 from adaptive_cloud_platform.models import (
@@ -32,11 +34,14 @@ from adaptive_cloud_platform.models import (
     ComponentTwoTelemetryRequest,
     ComponentTwoTrainingRequest,
     ContextUpdate,
+    FlowDeleteRequest,
+    FlowInstallRequest,
     IntegratedAutomationRequest,
     IntegratedRunRequest,
     MonitoringStackRequest,
     OpenStackControlRequest,
     OperatorLoginRequest,
+    OperatorOtpVerifyRequest,
     IntentRequest,
     PolicyEnforcementRequest,
     ResourcePlanRequest,
@@ -44,6 +49,7 @@ from adaptive_cloud_platform.models import (
     SessionLoginRequest,
     SessionVerifyRequest,
     SdnLabStartRequest,
+    SdnRuntimeEventRequest,
 )
 from adaptive_cloud_platform.state import IntegratedState
 from adaptive_cloud_platform.adapters.execution_adapter import ExecutionAdapter
@@ -177,12 +183,111 @@ async def _extract_operator_credentials(request: Request) -> tuple[str | None, s
     return username, password
 
 
+_NUMERIC_RE = re.compile(r'^-?\d+(?:\.\d+)?$')
+
+
+def _coerce_request_scalar(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if not stripped:
+        return ""
+    if stripped.startswith('{') or stripped.startswith('['):
+        try:
+            return json.loads(stripped)
+        except Exception:
+            return stripped
+    lowered = stripped.lower()
+    if lowered in {'true', 'false'}:
+        return lowered == 'true'
+    if ',' in stripped and not any(ch in stripped for ch in '{}[]'):
+        parts = [part.strip() for part in stripped.split(',') if part.strip()]
+        if len(parts) > 1:
+            return [_coerce_request_scalar(part) for part in parts]
+    if _NUMERIC_RE.match(stripped):
+        return float(stripped) if '.' in stripped else int(stripped)
+    return stripped
+
+
+def _coerce_qs_dict(parsed_qs: dict[str, list[str]]) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for key, values in parsed_qs.items():
+        coerced = [_coerce_request_scalar(value) for value in values]
+        data[key] = coerced if len(coerced) > 1 else coerced[0]
+    return data
+
+
+async def _extract_request_payload(request: Request, text_fallback_key: str | None = None) -> dict[str, Any]:
+    body_bytes = await request.body()
+    content_type = (request.headers.get('content-type') or '').lower()
+    data: dict[str, Any] = {}
+
+    if body_bytes:
+        decoded = body_bytes.decode('utf-8', errors='ignore').strip()
+        if 'application/json' in content_type:
+            try:
+                parsed = json.loads(decoded)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                data = parsed
+            elif isinstance(parsed, str) and '=' in parsed:
+                data = _coerce_qs_dict(parse_qs(parsed, keep_blank_values=True))
+        elif 'application/x-www-form-urlencoded' in content_type or 'multipart/form-data' in content_type:
+            data = _coerce_qs_dict(parse_qs(decoded, keep_blank_values=True))
+        elif decoded.startswith('{'):
+            try:
+                parsed = json.loads(decoded)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                data = parsed
+        elif '=' in decoded:
+            data = _coerce_qs_dict(parse_qs(decoded, keep_blank_values=True))
+        elif text_fallback_key:
+            data = {text_fallback_key: _coerce_request_scalar(decoded)}
+
+    for key, value in request.query_params.items():
+        data.setdefault(key, _coerce_request_scalar(value))
+    return data
+
+
+async def _parse_request_model(
+    request: Request,
+    model_cls: type,
+    *,
+    aliases: dict[str, str] | None = None,
+    defaults: dict[str, Any] | None = None,
+    text_fallback_key: str | None = None,
+) -> Any:
+    data = await _extract_request_payload(request, text_fallback_key=text_fallback_key)
+    normalized = dict(defaults or {})
+    normalized.update(data)
+    for source_key, target_key in (aliases or {}).items():
+        if source_key in normalized and target_key not in normalized:
+            normalized[target_key] = normalized[source_key]
+    try:
+        return model_cls.model_validate(normalized)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
 @app.post('/api/v1/auth/login')
 async def auth_login(request: Request) -> dict:
     username, password = await _extract_operator_credentials(request)
     if not username or not password:
         raise HTTPException(status_code=422, detail='Operator username and password are required')
     return operator_auth_service.login(username, password)
+
+
+@app.post('/api/v1/auth/verify-otp')
+async def auth_verify_otp(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        OperatorOtpVerifyRequest,
+        aliases={'challengeId': 'challenge_id', 'otp': 'otp_code', 'code': 'otp_code'},
+    )
+    return operator_auth_service.verify_otp(payload.challenge_id, payload.otp_code)
 
 
 def _resolve_operator_token(x_operator_token: str | None, authorization: str | None) -> str | None:
@@ -316,6 +421,17 @@ def _process_intent_payload(payload: dict) -> dict:
         orchestrator.record_resource_plan(allocation['plan'])
     decision = orchestrator.decide()
     _record_decision_metrics(decision)
+    sdn_runtime_service.record_event(
+        event_type='intent_pushed',
+        source='component-3',
+        severity='info',
+        message='Intent translated and queued for Ryu rule synchronization.',
+        metadata={
+            'intent_type': translated_intent.get('type'),
+            'priority': translated_intent.get('priority'),
+            'rules_generated': len(translation.get('rules', [])),
+        },
+    )
     return {
         'accepted': True,
         'intent': recorded,
@@ -506,13 +622,22 @@ def shutdown_background_services() -> None:
     sdn_runtime_service.shutdown()
 
 
-@app.post('/api/v1/intents')
-def post_intent(payload: IntentRequest) -> dict:
+def _submit_intent_model(payload: IntentRequest) -> dict:
     return _process_intent_payload(payload.model_dump(exclude_none=True))
 
 
-@app.post('/api/v1/context')
-def post_context(payload: ContextUpdate) -> dict:
+@app.post('/api/v1/intents')
+async def post_intent(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        IntentRequest,
+        aliases={'intent_type': 'type', 'protocol': 'proto', 'port': 'dst_port'},
+        text_fallback_key='intent',
+    )
+    return _submit_intent_model(payload)
+
+
+def _process_context_model(payload: ContextUpdate) -> dict:
     started_at = time.time()
     data = payload.model_dump(exclude_none=True)
     if not data.get('recommendation'):
@@ -560,6 +685,16 @@ def post_context(payload: ContextUpdate) -> dict:
     }
 
 
+@app.post('/api/v1/context')
+async def post_context(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        ContextUpdate,
+        aliases={'prediction': 'label', 'risk_level': 'label', 'recommended_action': 'recommendation'},
+    )
+    return _process_context_model(payload)
+
+
 @app.post('/api/v1/resource-plans')
 def post_resource_plan(payload: ResourcePlanRequest) -> dict:
     recorded = orchestrator.record_resource_plan(payload.model_dump())
@@ -576,6 +711,19 @@ def post_security_action(payload: SecurityActionRequest) -> dict:
     METRIC_SECURITY.inc()
     security_result = security_service.enforce_action(recorded)
     _record_component4_metrics(security_result)
+    sdn_runtime_service.record_event(
+        event_type='security_rule_applied',
+        source='component-4',
+        severity='critical' if str(recorded.get('action') or '') in {'block', 'quarantine', 'temporary_block'} else 'info',
+        message=f"Security action {recorded.get('action')} applied for {recorded.get('subject')}.",
+        metadata={
+            'subject': recorded.get('subject'),
+            'action': recorded.get('action'),
+            'reason': recorded.get('reason'),
+            'targets': recorded.get('targets') or [],
+            'expires_at': security_result.get('expires_at'),
+        },
+    )
     allocation = optimizer.apply_security_feedback({**recorded, 'expires_at': security_result.get('expires_at')})
     if allocation.get('plan'):
         METRIC_COMPONENT1_GA.inc()
@@ -724,6 +872,18 @@ def sdn_status() -> dict:
         intent_controller_service.status(),
         security_service.status(),
     )
+
+
+@app.post('/api/v1/sdn/events')
+def sdn_event_ingest(payload: SdnRuntimeEventRequest) -> dict:
+    event = sdn_runtime_service.record_event(
+        event_type=payload.event_type,
+        source=payload.source,
+        severity=payload.severity,
+        message=payload.message,
+        metadata=payload.metadata,
+    )
+    return {'accepted': True, 'event': event}
 
 
 @app.post('/api/v1/sdn/start')
@@ -898,7 +1058,7 @@ def component_two_platform() -> dict:
 
 @app.post('/api/v1/component-2/telemetry')
 def component_two_telemetry(payload: ComponentTwoTelemetryRequest) -> dict:
-    return post_context(ContextUpdate(**payload.model_dump(exclude_none=True)))
+    return _process_context_model(ContextUpdate(**payload.model_dump(exclude_none=True)))
 
 
 @app.get('/api/v1/component-2/scenarios/{scenario_name}')
@@ -986,6 +1146,19 @@ def component_one_route(payload: ComponentOneRouteRequest) -> dict:
     result = optimizer.route_request(**payload.model_dump())
     if result.get('accepted'):
         METRIC_COMPONENT1_ROUTES.inc()
+        sdn_runtime_service.record_event(
+            event_type='flow_routed',
+            source='component-1',
+            severity='info',
+            message=f"Flow routed to {result.get('backend_name') or result.get('backend_ip')}.",
+            metadata={
+                'client_ip': payload.client_ip,
+                'client_port': payload.client_port,
+                'backend_ip': result.get('backend_ip'),
+                'backend_name': result.get('backend_name'),
+                'dpid': result.get('dpid'),
+            },
+        )
     return result
 
 
@@ -1164,8 +1337,32 @@ def component_four_cti_alert(payload: ComponentFourAlertRequest) -> dict:
     if result.get('security_action'):
         enforcement = post_security_action(SecurityActionRequest(**result['security_action']))
         METRIC_COMPONENT4_CTI_EVENTS.labels(result='alert_blocked').inc()
+        sdn_runtime_service.record_event(
+            event_type='attack_blocked',
+            source='component-4',
+            severity='critical',
+            message=f"{payload.threat_type} traffic from {payload.src_ip} was blocked.",
+            metadata={
+                'attack_type': payload.threat_type,
+                'src_ip': payload.src_ip,
+                'signature': payload.signature,
+                'blocked': True,
+            },
+        )
     else:
         METRIC_COMPONENT4_CTI_EVENTS.labels(result='alert_observed').inc()
+        sdn_runtime_service.record_event(
+            event_type='attack_detected',
+            source='component-4',
+            severity='warning',
+            message=f"{payload.threat_type} traffic from {payload.src_ip} was detected.",
+            metadata={
+                'attack_type': payload.threat_type,
+                'src_ip': payload.src_ip,
+                'signature': payload.signature,
+                'blocked': False,
+            },
+        )
     result['component_4_enforcement'] = enforcement
     return result
 
@@ -1191,18 +1388,83 @@ def component_four_reset(
 # Compatibility layer for existing team module endpoints
 # ------------------------------------------------------------------
 @app.post('/api/intent/submit')
-def compat_submit_intent(payload: IntentRequest) -> dict:
-    return post_intent(payload)
+async def compat_submit_intent(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        IntentRequest,
+        aliases={'intent_type': 'type', 'protocol': 'proto', 'port': 'dst_port'},
+        text_fallback_key='intent',
+    )
+    return _submit_intent_model(payload)
 
 
 @app.post('/api/context/update')
-def compat_update_context(payload: ContextUpdate) -> dict:
-    return post_context(payload)
+async def compat_update_context(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        ContextUpdate,
+        aliases={'prediction': 'label', 'risk_level': 'label', 'recommended_action': 'recommendation'},
+    )
+    return _process_context_model(payload)
 
 
 @app.get('/api/network/hosts')
 def compat_hosts() -> dict:
     return intent_controller_service.hosts()
+
+
+@app.get('/api/network/topology')
+def compat_topology() -> dict:
+    return sdn_status().get('topology', {})
+
+
+@app.post('/api/flow/install')
+async def compat_flow_install(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        FlowInstallRequest,
+        aliases={'id': 'rule_id', 'action': 'flow_action', 'protocol': 'proto', 'port': 'dst_port'},
+    )
+    result = intent_controller_service.install_custom_rule(payload.model_dump(exclude_none=True))
+    rule = result.get('rule') or {}
+    sdn_runtime_service.record_event(
+        event_type='manual_flow_install',
+        source='compat-api',
+        severity='info',
+        message='Custom OpenFlow-compatible rule installed through the controller API.',
+        metadata={
+            'rule_id': rule.get('id'),
+            'switch': rule.get('switch'),
+            'action': rule.get('action'),
+            'rules': len(intent_controller_service.active_rules()),
+        },
+    )
+    return result
+
+
+@app.post('/api/flow/delete')
+async def compat_flow_delete(request: Request) -> dict:
+    payload = await _parse_request_model(request, FlowDeleteRequest, aliases={'id': 'rule_id'}, text_fallback_key='rule_id')
+    result = intent_controller_service.delete_rule(payload.rule_id)
+    sdn_runtime_service.record_event(
+        event_type='manual_flow_delete',
+        source='compat-api',
+        severity='warning',
+        message=f"Controller flow rule delete requested for {payload.rule_id}.",
+        metadata={'rule_id': payload.rule_id, 'removed': result.get('removed', 0)},
+    )
+    return result
+
+
+@app.post('/api/ml/predict')
+async def compat_ml_predict(request: Request) -> dict:
+    metrics = await _extract_request_payload(request)
+    prediction = monitoring_ml_service.predict(metrics)
+    return {
+        'accepted': True,
+        'metrics': monitoring_ml_service.normalize_metrics(metrics),
+        'prediction': prediction,
+    }
 
 
 @app.get('/api/metrics/get')
@@ -1224,7 +1486,8 @@ def compat_metrics() -> dict:
 
 
 @app.post('/api/v1/policy/enforce')
-def compat_policy_enforce(payload: PolicyEnforcementRequest) -> dict:
+async def compat_policy_enforce(request: Request) -> dict:
+    payload = await _parse_request_model(request, PolicyEnforcementRequest, aliases={'action': 'type', 'ip': 'src_ip'})
     if payload.type in {'block', 'quarantine', 'release', 'allow'}:
         action = security_service.build_action(
             action=payload.type,
@@ -1233,23 +1496,26 @@ def compat_policy_enforce(payload: PolicyEnforcementRequest) -> dict:
             severity=4 if payload.type in {'block', 'quarantine'} else 2,
         )
         return post_security_action(SecurityActionRequest(**action))
-    return post_intent(IntentRequest(type=payload.type, src_ip=payload.src_ip, dst_ip=payload.dst_ip, priority=4, metadata={'reason': payload.reason, 'duration': payload.duration}))
+    return _submit_intent_model(IntentRequest(type=payload.type, src_ip=payload.src_ip, dst_ip=payload.dst_ip, priority=4, metadata={'reason': payload.reason, 'duration': payload.duration}))
 
 
 @app.post('/sdn/block')
-def compat_block(payload: dict) -> dict:
+async def compat_block(request: Request) -> dict:
+    payload = await _extract_request_payload(request)
     action = security_service.build_action('block', payload.get('ip', 'unknown'), payload.get('reason', 'compat block'), 5)
     return post_security_action(SecurityActionRequest(**action))
 
 
 @app.post('/sdn/quarantine')
-def compat_quarantine(payload: dict) -> dict:
+async def compat_quarantine(request: Request) -> dict:
+    payload = await _extract_request_payload(request)
     action = security_service.build_action('quarantine', payload.get('ip', 'unknown'), payload.get('reason', 'compat quarantine'), 5)
     return post_security_action(SecurityActionRequest(**action))
 
 
 @app.post('/sdn/release')
-def compat_release(payload: dict) -> dict:
+async def compat_release(request: Request) -> dict:
+    payload = await _extract_request_payload(request)
     action = security_service.build_action('release', payload.get('ip', 'unknown'), payload.get('reason', 'compat release'), 2)
     return post_security_action(SecurityActionRequest(**action))
 
@@ -1265,12 +1531,22 @@ def compat_sdn_zones() -> dict:
 
 
 @app.post('/auth/login')
-def compat_auth_login(payload: SessionLoginRequest) -> dict:
+async def compat_auth_login(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        SessionLoginRequest,
+        aliases={'user': 'user_id', 'username': 'user_id', 'pw': 'password', 'src_ip': 'ip'},
+    )
     return component_four_auth_login(payload)
 
 
 @app.post('/auth/verify')
-def compat_auth_verify(payload: SessionVerifyRequest) -> dict:
+async def compat_auth_verify(request: Request) -> dict:
+    payload = await _parse_request_model(
+        request,
+        SessionVerifyRequest,
+        aliases={'bytes': 'bytes_sent', 'source_ip': 'ip'},
+    )
     return component_four_auth_verify(payload)
 
 
@@ -1290,12 +1566,14 @@ def compat_seg_policies() -> dict:
 
 
 @app.post('/seg/add_policy')
-def compat_seg_add_policy(payload: ComponentFourSegmentationPolicyRequest) -> dict:
+async def compat_seg_add_policy(request: Request) -> dict:
+    payload = await _parse_request_model(request, ComponentFourSegmentationPolicyRequest, aliases={'port': 'ports'})
     return component_four_add_segmentation_policy(payload)
 
 
 @app.post('/seg/quarantine')
-def compat_seg_quarantine(payload: dict) -> dict:
+async def compat_seg_quarantine(request: Request) -> dict:
+    payload = await _extract_request_payload(request)
     action = security_service.build_action('quarantine', payload.get('ip', 'unknown'), payload.get('reason', 'segmentation quarantine'), 4)
     return post_security_action(SecurityActionRequest(**action))
 
@@ -1322,6 +1600,7 @@ def compat_cti_fetch() -> dict:
 
 
 @app.post('/cti/block')
-def compat_cti_block(payload: dict) -> dict:
+async def compat_cti_block(request: Request) -> dict:
+    payload = await _extract_request_payload(request)
     value = payload.get('value') or payload.get('ip') or 'unknown'
     return component_four_block_indicator(ComponentFourCtiBlockRequest(value=value, reason=payload.get('reason')))

@@ -39,6 +39,13 @@ class SdnRuntimeService:
         self.openstack_last_action: Optional[str] = None
         self.openstack_last_error: Optional[str] = None
         self.openstack_last_result: Optional[Dict[str, Any]] = None
+        self.runtime_events: List[Dict[str, Any]] = []
+        self.switch_state: Dict[str, Dict[str, Any]] = {}
+        self.host_state: Dict[str, Dict[str, Any]] = {}
+        self.service_state: Dict[str, Dict[str, Any]] = {}
+        self.link_state: List[Dict[str, Any]] = []
+        self.attack_state: List[Dict[str, Any]] = []
+        self.openstack_visual_state: Dict[str, Any] = {}
 
     def status(
         self,
@@ -250,6 +257,51 @@ class SdnRuntimeService:
             except Exception:
                 self.openstack_process.terminate()
 
+    def record_event(
+        self,
+        event_type: str,
+        source: str = "runtime",
+        severity: str = "info",
+        message: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload = dict(metadata or {})
+        event = {
+            "event_type": str(event_type or "runtime_event"),
+            "source": str(source or "runtime"),
+            "severity": str(severity or "info"),
+            "message": str(message or ""),
+            "metadata": payload,
+            "ts": time.time(),
+        }
+        self.runtime_events.append(event)
+        self.runtime_events = self.runtime_events[-240:]
+
+        if event["event_type"] == "topology_snapshot":
+            self._ingest_topology_snapshot(payload)
+        if event["event_type"] in {"switch_connected", "switch_disconnected", "switch_stats", "ryu_rule_installed"}:
+            self._ingest_switch_event(event)
+        if event["event_type"] in {"attack_detected", "attack_started", "attack_blocked", "security_rule_applied"}:
+            src_ip = str(payload.get("src_ip") or payload.get("subject") or "")
+            dst_ip = str(payload.get("dst_ip") or "")
+            if src_ip:
+                current_host = self.host_state.get(src_ip, {"ip": src_ip, "name": src_ip, "role": "runtime host"})
+                current_host["state"] = "isolated" if event["event_type"] == "attack_blocked" else "warning"
+                if payload.get("attack_type"):
+                    current_host["note"] = payload.get("attack_type")
+                self.host_state[src_ip] = current_host
+            if dst_ip:
+                current_service = self.service_state.get(dst_ip, {"ip": dst_ip, "name": dst_ip})
+                current_service["state"] = "live" if event["event_type"] == "attack_blocked" else "warning"
+                if payload.get("attack_type"):
+                    current_service["note"] = f"Target under {payload.get('attack_type')}"
+                self.service_state[dst_ip] = current_service
+            self.attack_state.append(event)
+            self.attack_state = self.attack_state[-80:]
+        if event["event_type"].startswith("openstack_"):
+            self.openstack_visual_state.update(payload)
+        return event
+
     def command_catalog(self) -> List[Dict[str, Any]]:
         return [
             {
@@ -408,6 +460,16 @@ class SdnRuntimeService:
         horizon_probe = self._probe_http("http://127.0.0.1/dashboard/")
         deployment_mode = self._detect_openstack_mode(env)
         inventory = self._collect_openstack_inventory(env)
+        visualization = {
+            "control_plane": [
+                {"name": "Horizon", "state": "live" if horizon_probe.get("reachable") else "offline"},
+                {"name": "Nova", "state": "live" if inventory.get("available") else ("ready" if env["tool_paths"].get("openstack") else "offline")},
+                {"name": "Neutron", "state": "live" if inventory.get("available") else ("ready" if env["tool_paths"].get("openstack") else "offline")},
+                {"name": "Keystone", "state": "live" if horizon_probe.get("reachable") else ("ready" if env["tool_paths"].get("openstack") else "offline")},
+            ],
+            "networks": inventory.get("networks") or self.openstack_visual_state.get("networks") or [],
+            "instances": inventory.get("servers") or self.openstack_visual_state.get("instances") or [],
+        }
         return {
             "mode": deployment_mode,
             "linux_runtime": env["linux_runtime"],
@@ -427,6 +489,7 @@ class SdnRuntimeService:
             "last_result": self.openstack_last_result,
             "log_path": str(self.openstack_log_path),
             "log_tail": self._read_tail(self.openstack_log_path),
+            "visualization": visualization,
         }
 
     def _lab_status(self, env: Dict[str, Any], commands: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -434,6 +497,8 @@ class SdnRuntimeService:
         running = bool(process and process.poll() is None)
         controller_probe = self._probe_tcp("127.0.0.1", 6653)
         controller_log = self._read_tail(self.ryu_log_path)
+        recent_events = self.runtime_events[-8:]
+        recent_attacks = self.attack_state[-4:]
         return {
             "running": running,
             "interactive": False,
@@ -455,6 +520,8 @@ class SdnRuntimeService:
                 "port": 6653,
                 "recent_logs": [line for line in controller_log.splitlines() if line.strip()][-6:],
                 "last_error": self.lab_last_error,
+                "recent_events": recent_events,
+                "recent_attacks": recent_attacks,
             },
         }
 
@@ -463,6 +530,13 @@ class SdnRuntimeService:
         command = f"bash scripts/control_openstack.sh {action} {deployment_mode}"
         self.openstack_last_command = command
         self.openstack_last_action = action
+        next_state = "starting" if action in {"deploy", "start"} else "stopping"
+        self.openstack_visual_state["control_plane"] = [
+            {"name": "Horizon", "state": next_state},
+            {"name": "Nova", "state": next_state},
+            {"name": "Neutron", "state": next_state},
+            {"name": "Keystone", "state": next_state},
+        ]
 
         if not env["linux_runtime"]:
             self.openstack_last_error = "Linux runtime required for OpenStack deployment and lifecycle control."
@@ -598,6 +672,12 @@ class SdnRuntimeService:
             },
             "switch_counts": switch_counts,
             "rules": flow_entries[-24:],
+            "controller_api": {
+                "intent_ingest": f"{self.api_url}/api/v1/component-3/intents",
+                "intent_rules": f"{self.api_url}/api/v1/component-3/rules",
+                "security_rules": f"{self.api_url}/api/v1/component-4/rules",
+                "runtime_events": f"{self.api_url}/api/v1/sdn/events",
+            },
         }
 
     def _topology_status(
@@ -613,23 +693,59 @@ class SdnRuntimeService:
         blocked_subjects = {str(rule.get("subject") or "") for rule in security_rules if str(rule.get("action") or "").lower() in {"block", "quarantine", "temporary_block"}}
         controller_live = bool(self._probe_tcp("127.0.0.1", 6653).get("reachable"))
         switch_counts = openflow.get("switch_counts") or {}
+        base_switches = {
+            "s1": {"name": "s1", "role": "edge"},
+            "s2": {"name": "s2", "role": "fabric"},
+            "s3": {"name": "s3", "role": "fabric"},
+            "s4": {"name": "s4", "role": "edge"},
+        }
+        for name, snapshot in self.switch_state.items():
+            base_switches.setdefault(name, {"name": name, "role": snapshot.get("role") or "fabric"})
+            base_switches[name].update(snapshot)
+        switches = []
+        for name in sorted(base_switches):
+            item = dict(base_switches[name])
+            item["rules"] = int(switch_counts.get(name, item.get("rules") or 0))
+            item["state"] = item.get("state") or ("live" if controller_live else "idle")
+            switches.append(item)
 
-        services = [
-            {
+        host_map: Dict[str, Dict[str, Any]] = {
+            "10.0.0.1": {"name": "client-1", "ip": "10.0.0.1", "role": "traffic source", "switch": "s1"},
+            "10.0.0.2": {"name": "client-2", "ip": "10.0.0.2", "role": "traffic source", "switch": "s1"},
+            "10.0.0.3": {"name": "client-3", "ip": "10.0.0.3", "role": "scanner / load", "switch": "s1"},
+            "10.0.0.4": {"name": "service-sink", "ip": "10.0.0.4", "role": "Mininet app target", "switch": "s4"},
+        }
+        for key, value in self.host_state.items():
+            host_map.setdefault(key, {"ip": key})
+            host_map[key].update(value)
+
+        service_map: Dict[str, Dict[str, Any]] = {}
+        for backend in backends:
+            ip = str(backend.get("ip") or backend.get("name") or "")
+            if not ip:
+                continue
+            service_map[ip] = {
                 "name": backend.get("name"),
                 "ip": backend.get("ip"),
-                "state": "isolated" if str(backend.get("ip") or "") in blocked_subjects or backend.get("optimizer_status") == "offline" else "live",
+                "state": "isolated" if ip in blocked_subjects or backend.get("optimizer_status") == "offline" else "live",
                 "note": backend.get("security_reason") or backend.get("optimizer_status") or "available",
             }
-            for backend in backends
-        ]
+        for key, value in self.service_state.items():
+            service_map.setdefault(key, {"ip": key})
+            service_map[key].update(value)
 
-        hosts = [
-            {"name": "client-1", "ip": "10.0.0.1", "role": "traffic source", "switch": "s1"},
-            {"name": "client-2", "ip": "10.0.0.2", "role": "traffic source", "switch": "s1"},
-            {"name": "client-3", "ip": "10.0.0.3", "role": "scanner / load", "switch": "s1"},
-            {"name": "service-sink", "ip": "10.0.0.4", "role": "Mininet app target", "switch": "s4"},
+        links = self.link_state or [
+            {"from": "ryu", "to": "s1", "kind": "control"},
+            {"from": "ryu", "to": "s2", "kind": "control"},
+            {"from": "ryu", "to": "s3", "kind": "control"},
+            {"from": "ryu", "to": "s4", "kind": "control"},
+            {"from": "s1", "to": "s2", "kind": "fabric"},
+            {"from": "s2", "to": "s3", "kind": "fabric"},
+            {"from": "s3", "to": "s4", "kind": "fabric"},
         ]
+        alerts = self.attack_state[-5:]
+        last_event = self.runtime_events[-1] if self.runtime_events else None
+        last_attack = self.attack_state[-1] if self.attack_state else None
 
         return {
             "controller": {
@@ -638,24 +754,20 @@ class SdnRuntimeService:
                 "port": 6653,
                 "rules": openflow.get("total_rules", 0),
             },
-            "switches": [
-                {"name": "s1", "role": "edge", "rules": switch_counts.get("s1", 0), "state": "live" if controller_live else "idle"},
-                {"name": "s2", "role": "fabric", "rules": switch_counts.get("s2", 0), "state": "live" if controller_live else "idle"},
-                {"name": "s3", "role": "fabric", "rules": switch_counts.get("s3", 0), "state": "live" if controller_live else "idle"},
-                {"name": "s4", "role": "edge", "rules": switch_counts.get("s4", 0), "state": "live" if controller_live else "idle"},
-            ],
-            "hosts": hosts,
-            "services": services,
-            "links": [
-                {"from": "ryu", "to": "s1", "kind": "control"},
-                {"from": "ryu", "to": "s2", "kind": "control"},
-                {"from": "ryu", "to": "s3", "kind": "control"},
-                {"from": "ryu", "to": "s4", "kind": "control"},
-                {"from": "s1", "to": "s2", "kind": "fabric"},
-                {"from": "s1", "to": "s3", "kind": "fabric"},
-                {"from": "s2", "to": "s4", "kind": "fabric"},
-                {"from": "s3", "to": "s4", "kind": "fabric"},
-            ],
+            "switches": switches,
+            "hosts": list(host_map.values()),
+            "services": list(service_map.values()),
+            "links": links,
+            "alerts": alerts,
+            "sync_state": {
+                "runtime_events": len(self.runtime_events),
+                "attack_events": len(self.attack_state),
+                "last_event": last_event,
+                "last_attack": last_attack,
+                "events_api": f"{self.api_url}/api/v1/sdn/events",
+                "intent_api": f"{self.api_url}/api/v1/component-3/intents",
+                "rules_api": f"{self.api_url}/api/v1/component-3/rules",
+            },
             "monitoring_nodes": [
                 {
                     "name": "Prometheus",
@@ -700,6 +812,54 @@ class SdnRuntimeService:
         if match.get("allowed_destinations"):
             parts.append("allow " + ", ".join(str(item) for item in match["allowed_destinations"]))
         return " | ".join(parts) if parts else "OpenFlow match"
+
+    def _ingest_topology_snapshot(self, payload: Dict[str, Any]) -> None:
+        switches = payload.get("switches") or []
+        hosts = payload.get("hosts") or []
+        services = payload.get("services") or []
+        links = payload.get("links") or []
+        for item in switches:
+            name = str(item.get("name") or self._normalize_switch(item.get("dpid")) or "")
+            if not name:
+                continue
+            current = self.switch_state.get(name, {})
+            current.update(item)
+            self.switch_state[name] = current
+        for item in hosts:
+            ip = str(item.get("ip") or item.get("name") or "")
+            if not ip:
+                continue
+            current = self.host_state.get(ip, {})
+            current.update(item)
+            self.host_state[ip] = current
+        for item in services:
+            ip = str(item.get("ip") or item.get("name") or "")
+            if not ip:
+                continue
+            current = self.service_state.get(ip, {})
+            current.update(item)
+            self.service_state[ip] = current
+        if links:
+            self.link_state = list(links)
+
+    def _ingest_switch_event(self, event: Dict[str, Any]) -> None:
+        payload = event.get("metadata") or {}
+        switch_name = str(payload.get("switch") or self._normalize_switch(payload.get("dpid")) or "")
+        if not switch_name:
+            return
+        current = self.switch_state.get(switch_name, {"name": switch_name})
+        current["state"] = "offline" if event["event_type"] == "switch_disconnected" else "live"
+        if payload.get("dpid") is not None:
+            current["dpid"] = payload.get("dpid")
+        if payload.get("rules") is not None:
+            current["rules"] = payload.get("rules")
+        if payload.get("ports") is not None:
+            current["ports"] = payload.get("ports")
+        if payload.get("role"):
+            current["role"] = payload.get("role")
+        current["last_event"] = event["event_type"]
+        current["last_seen"] = event["ts"]
+        self.switch_state[switch_name] = current
 
     def _detect_openstack_mode(self, env: Dict[str, Any]) -> str:
         if env["tool_paths"].get("microstack"):

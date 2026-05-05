@@ -25,22 +25,49 @@
         <form class="login-gate-card" id="loginGateForm">
           <div class="login-gate-copy">
             <h1>Operator Login</h1>
-            <p>Sign in to access monitoring, controller operations, security actions, and OpenStack controls.</p>
+            <p>Sign in with your operator password, then scan the QR and verify with a one-time code.</p>
           </div>
-          <label>
-            Username
-            <input id="loginGateUser" type="text" value="admin" autocomplete="username" />
-          </label>
-          <label>
-            Password
-            <input id="loginGatePass" type="password" value="admin123" autocomplete="current-password" />
-          </label>
-          <button class="primary-button login-gate-button" id="loginGateBtn" type="submit">
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M10 17 15 12 10 7v10Zm-7 5V2h18v20H3Z" />
-            </svg>
-            Sign In
-          </button>
+          <div class="login-gate-step" id="loginGateCredentialStep">
+            <label>
+              Username
+              <input id="loginGateUser" type="text" value="admin" autocomplete="username" />
+            </label>
+            <label>
+              Password
+              <input id="loginGatePass" type="password" value="admin123" autocomplete="current-password" />
+            </label>
+            <button class="primary-button login-gate-button" id="loginGateBtn" type="submit">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M10 17 15 12 10 7v10Zm-7 5V2h18v20H3Z" />
+              </svg>
+              Continue
+            </button>
+          </div>
+          <div class="login-gate-step otp-step" id="loginGateOtpStep" hidden>
+            <div class="otp-qr-panel">
+              <div class="otp-qr-frame">
+                <img id="loginGateQrImage" alt="Operator OTP QR code" />
+              </div>
+              <div class="otp-copy">
+                <strong>Scan With Authenticator</strong>
+                <p>Use Google Authenticator, Microsoft Authenticator, or any TOTP app.</p>
+                <code id="loginGateOtpSecret">Secret pending</code>
+              </div>
+            </div>
+            <label>
+              One-Time Password
+              <input id="loginGateOtpInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6-digit code" />
+            </label>
+            <div class="login-gate-actions">
+              <button class="secondary-button subtle" id="loginGateBackBtn" type="button">Back</button>
+              <button class="primary-button login-gate-button" id="loginGateVerifyBtn" type="button">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-4Zm-1 13.5-3-3 1.4-1.4 1.6 1.6 4.6-4.6L17 9.5l-6 6Z" />
+                </svg>
+                Verify and Sign In
+              </button>
+            </div>
+          </div>
           <p class="login-gate-status" id="loginGateStatus">Operator login required.</p>
         </form>
       </div>
@@ -83,13 +110,13 @@
           </div>
           <div class="topbar-actions">
             <div class="auth-strip" id="authStrip">
-              <input id="operatorUser" class="auth-input" type="text" value="admin" aria-label="Operator username" />
-              <input id="operatorPass" class="auth-input" type="password" value="admin123" aria-label="Operator password" />
-              <button class="secondary-button auth-login-action" id="operatorLoginBtn" type="button">Login</button>
-              <button class="secondary-button subtle" id="operatorLogoutBtn" type="button">Logout</button>
               <span class="status-pill" id="authStatus">
                 <span class="status-dot"></span>
                 Locked
+              </span>
+              <span class="status-pill" id="otpModeStatus">
+                <span class="status-dot"></span>
+                2FA
               </span>
               <div class="token-strip" id="operatorTokenStrip" hidden>
                 <code id="operatorTokenValue">No token</code>
@@ -99,6 +126,7 @@
                   </svg>
                 </button>
               </div>
+              <button class="secondary-button subtle" id="operatorLogoutBtn" type="button">Logout</button>
             </div>
             <select class="scenario-select" id="integratedScenario" aria-label="Integrated scenario">
               <option value="mixed">Mixed</option>

@@ -12,6 +12,11 @@ const state = {
   automation: null,
   auth: null,
   authToken: window.localStorage.getItem("adaptiveOperatorToken") || "",
+  pendingOtpChallengeId: "",
+  pendingOtpExpiresAt: null,
+  pendingOtpSecret: "",
+  pendingOtpQr: "",
+  pendingOtpUser: "",
   latestIntegratedRun: null,
   platformValidation: null,
   integratedRunCount: 0,
@@ -43,16 +48,21 @@ function cacheElements() {
     "loginGateUser",
     "loginGatePass",
     "loginGateBtn",
+    "loginGateCredentialStep",
+    "loginGateOtpStep",
+    "loginGateQrImage",
+    "loginGateOtpSecret",
+    "loginGateOtpInput",
+    "loginGateVerifyBtn",
+    "loginGateBackBtn",
     "loginGateStatus",
     "apiBase",
     "apiStatus",
     "refreshBtn",
     "autoRefresh",
-    "operatorUser",
-    "operatorPass",
-    "operatorLoginBtn",
     "operatorLogoutBtn",
     "authStatus",
+    "otpModeStatus",
     "operatorTokenStrip",
     "operatorTokenValue",
     "copyTokenBtn",
@@ -108,7 +118,6 @@ function cacheElements() {
     "backendList",
     "flowRuleList",
     "eventTimeline",
-    "apiMatrix",
     "toast",
     "requestForm",
     "metricForm",
@@ -175,7 +184,8 @@ function bindEvents() {
     event.preventDefault();
     loginOperator("gate");
   });
-  els.operatorLoginBtn.addEventListener("click", () => loginOperator("topbar"));
+  els.loginGateVerifyBtn.addEventListener("click", verifyOperatorOtp);
+  els.loginGateBackBtn.addEventListener("click", resetOtpLoginStep);
   els.operatorLogoutBtn.addEventListener("click", logoutOperator);
   els.copyTokenBtn.addEventListener("click", copyOperatorToken);
   els.startAutomationBtn.addEventListener("click", startSystemAutomation);
@@ -277,12 +287,23 @@ async function refreshAll(options = {}) {
 async function loginOperator(source = "topbar") {
   const payload = operatorCredentials(source);
   try {
-    setLoginGateStatus("Signing in...", false);
+    setLoginGateStatus("Checking operator credentials...", false);
     const result = await apiRequest("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),
       headers: {}
     });
+    if (result.otp_required && result.challenge_id) {
+      state.pendingOtpChallengeId = result.challenge_id;
+      state.pendingOtpExpiresAt = result.expires_at || null;
+      state.pendingOtpSecret = result.manual_entry_key || "";
+      state.pendingOtpQr = result.qr_code_data_uri || "";
+      state.pendingOtpUser = payload.username || "";
+      renderLoginGateStep();
+      setLoginGateStatus("Scan the QR code and enter the current OTP to finish signing in.", false);
+      showToast("Credentials accepted. OTP verification is required.");
+      return;
+    }
     if (!result.authenticated || !result.token) {
       setLoginGateStatus(result.error || "Login failed", true);
       showToast(result.error || "Login failed", true);
@@ -291,8 +312,42 @@ async function loginOperator(source = "topbar") {
     state.authToken = result.token;
     window.localStorage.setItem("adaptiveOperatorToken", result.token);
     syncOperatorInputs(payload);
+    resetOtpLoginStep(true);
     setLoginGateStatus("Authenticated", false);
     showToast("Operator login successful");
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    setLoginGateStatus(error.message, true);
+    showToast(error.message, true);
+  }
+}
+
+async function verifyOperatorOtp() {
+  if (!state.pendingOtpChallengeId) {
+    setLoginGateStatus("Start with username and password first.", true);
+    return;
+  }
+  const otpCode = valueOf("loginGateOtpInput");
+  try {
+    setLoginGateStatus("Verifying one-time password...", false);
+    const result = await apiRequest("/api/v1/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        challenge_id: state.pendingOtpChallengeId,
+        otp_code: otpCode
+      }),
+      headers: {}
+    });
+    if (!result.authenticated || !result.token) {
+      setLoginGateStatus(result.error || "OTP verification failed", true);
+      showToast(result.error || "OTP verification failed", true);
+      return;
+    }
+    state.authToken = result.token;
+    window.localStorage.setItem("adaptiveOperatorToken", result.token);
+    resetOtpLoginStep(true);
+    setLoginGateStatus(`Signed in as ${result.username || state.pendingOtpUser || "admin"}`, false);
+    showToast("Operator sign-in completed");
     await refreshAll({ quiet: true });
   } catch (error) {
     setLoginGateStatus(error.message, true);
@@ -312,6 +367,7 @@ async function logoutOperator() {
     state.authToken = "";
     state.auth = { authenticated: false };
     window.localStorage.removeItem("adaptiveOperatorToken");
+    resetOtpLoginStep(false);
     setLoginGateStatus("Operator login required.", false);
     renderAuthState();
     showToast("Operator logged out");
@@ -375,6 +431,7 @@ function renderState() {
 function renderAuthState() {
   const auth = state.auth || { authenticated: false };
   const authenticated = Boolean(auth.authenticated);
+  const pendingOtp = Boolean(state.pendingOtpChallengeId);
   const automation = state.automation || {};
   const lab = state.sdnRuntime?.lab || {};
   const openstack = state.sdnRuntime?.openstack || {};
@@ -384,26 +441,23 @@ function renderAuthState() {
   els.loginGate.hidden = authenticated;
   els.authStatus.className = `status-pill ${authenticated ? "online" : "offline"}`;
   els.authStatus.innerHTML = `<span class="status-dot"></span>${escapeHtml(authenticated ? `Operator ${auth.username || "admin"}` : "Locked")}`;
-  els.operatorUser.hidden = authenticated;
-  els.operatorPass.hidden = authenticated;
-  els.operatorLoginBtn.hidden = authenticated;
   els.operatorLogoutBtn.hidden = !authenticated;
-  els.operatorLoginBtn.disabled = authenticated;
   els.operatorLogoutBtn.disabled = !authenticated;
-  els.operatorUser.disabled = authenticated;
-  els.operatorPass.disabled = authenticated;
   els.loginGateBtn.disabled = authenticated;
   els.loginGateUser.disabled = authenticated;
   els.loginGatePass.disabled = authenticated;
   if (authenticated) {
-    syncOperatorInputs({ username: auth.username || valueOf("operatorUser") || "admin", password: valueOf("operatorPass") || valueOf("loginGatePass") || "" });
+    syncOperatorInputs({ username: auth.username || state.pendingOtpUser || "admin", password: valueOf("loginGatePass") || "" });
     setLoginGateStatus(`Signed in as ${auth.username || "admin"}`, false);
   } else if (!state.authToken) {
-    setLoginGateStatus("Operator login required.", false);
+    setLoginGateStatus(pendingOtp ? "Awaiting OTP verification." : "Operator login required.", false);
   }
+  els.otpModeStatus.className = `status-pill ${pendingOtp || authenticated ? "online" : "offline"}`;
+  els.otpModeStatus.innerHTML = `<span class="status-dot"></span>${escapeHtml(pendingOtp ? "OTP Pending" : "2FA")}`;
   els.operatorTokenStrip.hidden = !authenticated || !state.authToken;
   els.copyTokenBtn.disabled = !authenticated || !state.authToken;
   els.operatorTokenValue.textContent = authenticated && state.authToken ? `Bearer ${state.authToken}` : "No token";
+  renderLoginGateStep();
   els.startAutomationBtn.disabled = !authenticated || Boolean(automation.running);
   els.stopAutomationBtn.disabled = !authenticated || !automation.running;
   els.runIntegratedBtn.disabled = !authenticated;
@@ -474,26 +528,20 @@ function renderComponentNav() {
 }
 
 function operatorCredentials(source = "topbar") {
-  const preferredUser = source === "gate" ? valueOf("loginGateUser") : valueOf("operatorUser");
-  const preferredPass = source === "gate" ? valueOf("loginGatePass") : valueOf("operatorPass");
-  const username = preferredUser || valueOf("loginGateUser") || valueOf("operatorUser");
-  const password = preferredPass || valueOf("loginGatePass") || valueOf("operatorPass");
+  const preferredUser = source === "gate" ? valueOf("loginGateUser") : state.pendingOtpUser;
+  const preferredPass = source === "gate" ? valueOf("loginGatePass") : "";
+  const username = preferredUser || valueOf("loginGateUser") || state.pendingOtpUser || "";
+  const password = preferredPass || valueOf("loginGatePass") || "";
   return { username, password };
 }
 
 function syncOperatorInputs(credentials = {}) {
   const username = credentials.username || "";
   const password = credentials.password || "";
-  if (els.operatorUser) {
-    els.operatorUser.value = username;
-  }
   if (els.loginGateUser) {
     els.loginGateUser.value = username;
   }
   if (password) {
-    if (els.operatorPass) {
-      els.operatorPass.value = password;
-    }
     if (els.loginGatePass) {
       els.loginGatePass.value = password;
     }
@@ -506,6 +554,37 @@ function setLoginGateStatus(message, isError = false) {
   }
   els.loginGateStatus.textContent = message || "";
   els.loginGateStatus.classList.toggle("error", Boolean(isError));
+}
+
+function renderLoginGateStep() {
+  const otpStep = Boolean(state.pendingOtpChallengeId);
+  if (!els.loginGateCredentialStep || !els.loginGateOtpStep) {
+    return;
+  }
+  els.loginGateCredentialStep.hidden = otpStep;
+  els.loginGateOtpStep.hidden = !otpStep;
+  if (els.loginGateQrImage) {
+    els.loginGateQrImage.src = state.pendingOtpQr || "";
+  }
+  if (els.loginGateOtpSecret) {
+    els.loginGateOtpSecret.textContent = state.pendingOtpSecret || "Secret pending";
+  }
+  if (els.loginGateVerifyBtn) {
+    els.loginGateVerifyBtn.disabled = !otpStep;
+  }
+}
+
+function resetOtpLoginStep(keepUsername = false) {
+  const username = keepUsername ? (state.pendingOtpUser || valueOf("loginGateUser") || "admin") : valueOf("loginGateUser");
+  state.pendingOtpChallengeId = "";
+  state.pendingOtpExpiresAt = null;
+  state.pendingOtpSecret = "";
+  state.pendingOtpQr = "";
+  state.pendingOtpUser = keepUsername ? username : "";
+  if (els.loginGateOtpInput) {
+    els.loginGateOtpInput.value = "";
+  }
+  renderLoginGateStep();
 }
 
 async function copyOperatorToken() {
@@ -631,8 +710,17 @@ function renderSdnTopology(topology) {
   const hosts = topology.hosts || [];
   const services = topology.services || [];
   const monitoringNodes = topology.monitoring_nodes || [];
+  const alerts = topology.alerts || [];
+  const links = topology.links || [];
+  const syncState = topology.sync_state || {};
   return `
     <div class="sdn-topology-stage">
+      <div class="sdn-topology-row sync-row">
+        ${renderSyncChip("Events", String(syncState.runtime_events || 0))}
+        ${renderSyncChip("Attacks", String(syncState.attack_events || 0))}
+        ${renderSyncChip("Intent API", syncState.intent_api ? "linked" : "pending", syncState.intent_api ? "live" : "idle")}
+        ${renderSyncChip("Ryu Rules", syncState.rules_api ? "linked" : "pending", syncState.rules_api ? "live" : "idle")}
+      </div>
       <div class="sdn-topology-row controller-row">
         ${renderSdnNode(controller.name || "Ryu", controller.state || "idle", `${controller.rules || 0} rules`)}
       </div>
@@ -648,6 +736,18 @@ function renderSdnTopology(topology) {
       <div class="sdn-topology-row monitor-row">
         ${monitoringNodes.map((item) => renderSdnNode(item.name, item.state || "idle", item.url?.replace("http://", "") || "")).join("")}
       </div>
+      ${links.length ? `<div class="sdn-link-cloud">${links.slice(0, 10).map((link) => `
+        <span class="sdn-link-pill ${escapeHtml(link.kind || "fabric")}">${escapeHtml(`${link.from || "?"} -> ${link.to || "?"}`)}</span>
+      `).join("")}</div>` : ""}
+      ${alerts.length ? `
+        <div class="sdn-topology-row alert-row">
+          ${alerts.slice().reverse().map((item) => renderSdnNode(
+            item.metadata?.attack_type || item.event_type || "alert",
+            item.event_type === "attack_blocked" ? "isolated" : "warning",
+            item.metadata?.src_ip || item.message || ""
+          )).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -661,14 +761,25 @@ function renderSdnNode(title, stateName, detail) {
   `;
 }
 
+function renderSyncChip(label, value, className = "live") {
+  return `<span class="sdn-sync-chip ${escapeHtml(className)}"><strong>${escapeHtml(label)}</strong><em>${escapeHtml(value)}</em></span>`;
+}
+
 function renderSdnOpenflow(openflow) {
   const counts = openflow.component_counts || {};
   const rules = openflow.rules || [];
+  const controllerApi = openflow.controller_api || {};
   return `
     <div class="sdn-openflow-summary">
       <span>C1 ${counts.component_1 || 0}</span>
       <span>C3 ${counts.component_3 || 0}</span>
       <span>C4 ${counts.component_4 || 0}</span>
+    </div>
+    <div class="sdn-controller-links">
+      ${controllerApi.intent_ingest ? `<span class="controller-link live">Intent API</span>` : ""}
+      ${controllerApi.intent_rules ? `<span class="controller-link live">Rule Feed</span>` : ""}
+      ${controllerApi.security_rules ? `<span class="controller-link live">Security Feed</span>` : ""}
+      ${controllerApi.runtime_events ? `<span class="controller-link live">Event Bridge</span>` : ""}
     </div>
     <div class="sdn-openflow-rule-list">
       ${rules.length ? rules.map((rule) => `
@@ -693,8 +804,11 @@ function renderSdnControllerWindow(runtime) {
   const topology = runtime.topology || {};
   const openflow = runtime.openflow || {};
   const switches = topology.switches || [];
+  const syncState = topology.sync_state || {};
   const connected = switches.filter((item) => item.state === "live");
   const logs = controller.recent_logs || [];
+  const events = controller.recent_events || [];
+  const attacks = controller.recent_attacks || [];
   const lastError = controller.last_error || lab.last_error || "";
   return `
     <div class="sdn-controller-summary">
@@ -704,8 +818,15 @@ function renderSdnControllerWindow(runtime) {
       <span>Rules: ${escapeHtml(String(openflow.total_rules || 0))}</span>
     </div>
     <div class="sdn-controller-links">
+      ${syncState.last_event ? `<span class="controller-link live">Last event | ${escapeHtml(prettify(syncState.last_event.event_type || "runtime"))}</span>` : ""}
+      ${syncState.last_attack ? `<span class="controller-link warning">Last attack | ${escapeHtml(prettify(syncState.last_attack.metadata?.attack_type || syncState.last_attack.event_type || "incident"))}</span>` : ""}
+      ${syncState.events_api ? `<span class="controller-link live">GUI <-> Runtime sync</span>` : ""}
+    </div>
+    <div class="sdn-controller-links">
       ${switches.map((item) => `<span class="controller-link ${escapeHtml(item.state || "idle")}">${escapeHtml(item.name)} | ${item.rules || 0} rules</span>`).join("")}
     </div>
+    ${events.length ? `<div class="sdn-controller-log">${events.slice().reverse().map((item) => `<div><strong>${escapeHtml(prettify(item.event_type || "event"))}</strong> | ${escapeHtml(item.source || "runtime")} | ${escapeHtml(item.message || "")}</div>`).join("")}</div>` : ""}
+    ${attacks.length ? `<div class="sdn-controller-alert">${attacks.slice().reverse().map((item) => `${prettify(item.metadata?.attack_type || item.event_type || "attack")}: ${item.metadata?.src_ip || item.message || "event"}`).join(" | ")}</div>` : ""}
     ${lastError ? `<div class="sdn-controller-alert">${escapeHtml(lastError)}</div>` : ""}
     ${logs.length ? `<div class="sdn-controller-log">${logs.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>` : `<p class="empty">Controller log will appear when Ryu starts.</p>`}
   `;
@@ -734,6 +855,10 @@ function renderOpenStackRuntime(openstack) {
   const logTail = openstack.log_tail || "";
   const lastError = openstack.last_error || inventory.error || "";
   const lastResult = openstack.last_result || {};
+  const visualization = openstack.visualization || {};
+  const controlPlane = visualization.control_plane || [];
+  const networks = visualization.networks || [];
+  const instances = visualization.instances || [];
   const inventorySummary = [
     `Mode: ${prettify(openstack.mode || "unavailable")}`,
     `Servers: ${inventory.servers_count || 0}`,
@@ -758,9 +883,49 @@ function renderOpenStackRuntime(openstack) {
         <em>${inventory.servers_count || 0} servers / ${inventory.networks_count || 0} networks</em>
       </article>
     </div>
+    <div class="openstack-visual-grid">
+      <article class="openstack-visual-card">
+        <strong>Control Plane</strong>
+        <div class="openstack-visual-list">
+          ${controlPlane.length ? controlPlane.map((item) => `<span class="sdn-link-pill ${escapeHtml(item.state || "idle")}">${escapeHtml(item.name)} | ${escapeHtml(prettify(item.state || "offline"))}</span>`).join("") : "<span class=\"empty\">No service state yet.</span>"}
+        </div>
+      </article>
+      <article class="openstack-visual-card">
+        <strong>Networks</strong>
+        <div class="openstack-visual-list">
+          ${networks.length ? networks.slice(0, 6).map((item) => `<span class="sdn-link-pill fabric">${escapeHtml(item.Name || item.name || item.id || "network")}</span>`).join("") : "<span class=\"empty\">No network inventory yet.</span>"}
+        </div>
+      </article>
+      <article class="openstack-visual-card">
+        <strong>Instances</strong>
+        <div class="openstack-visual-list">
+          ${instances.length ? instances.slice(0, 6).map((item) => `<span class="sdn-link-pill live">${escapeHtml(item.Name || item.name || item.ID || "instance")}</span>`).join("") : "<span class=\"empty\">No instance inventory yet.</span>"}
+        </div>
+      </article>
+    </div>
     <div class="sdn-controller-window">
       <div class="sdn-controller-summary">
         ${inventorySummary.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>
+      <div class="sdn-openflow-rule-list">
+        <article class="sdn-openflow-rule">
+          <div><strong>Control Plane</strong><span>${escapeHtml(String(controlPlane.length))} services</span></div>
+          <div class="sdn-openflow-meta">
+            ${controlPlane.map((item) => `<span>${escapeHtml(item.name)} | ${escapeHtml(prettify(item.state || "offline"))}</span>`).join("") || "<span>No OpenStack control-plane data yet.</span>"}
+          </div>
+        </article>
+        <article class="sdn-openflow-rule">
+          <div><strong>Networks</strong><span>${escapeHtml(String(networks.length || inventory.networks_count || 0))}</span></div>
+          <div class="sdn-openflow-meta">
+            ${networks.length ? networks.slice(0, 4).map((item) => `<span>${escapeHtml(item.Name || item.name || item.id || "network")} | ${escapeHtml(item.Status || item.status || item["Subnets"] || "network")}</span>`).join("") : "<span>Waiting for OpenStack network inventory.</span>"}
+          </div>
+        </article>
+        <article class="sdn-openflow-rule">
+          <div><strong>Instances</strong><span>${escapeHtml(String(instances.length || inventory.servers_count || 0))}</span></div>
+          <div class="sdn-openflow-meta">
+            ${instances.length ? instances.slice(0, 4).map((item) => `<span>${escapeHtml(item.Name || item.name || item.ID || "instance")} | ${escapeHtml(item.Status || item.status || item.Networks || "instance")}</span>`).join("") : "<span>Waiting for OpenStack server inventory.</span>"}
+          </div>
+        </article>
       </div>
       <div class="sdn-controller-links">
         <button class="mini-button" type="button" data-open-url="http://127.0.0.1/dashboard/">Open Horizon</button>
@@ -947,27 +1112,6 @@ function renderTimeline() {
       <span class="timeline-kind">${escapeHtml(shortKind(event.type))}</span>
       <strong>${escapeHtml(prettify(event.type || "event"))}</strong>
       <time>${formatTime(event.ts)}</time>
-    </article>
-  `).join("");
-}
-
-function renderApiMatrix() {
-  const component = componentConfigs[0];
-  const coverage = [
-    ["RR real-time decision", "POST /api/v1/component-1/route"],
-    ["GA long-term optimization", "POST /api/v1/resource-plans/recompute"],
-    ["Backend metric ingestion", "POST /api/v1/component-1/backends/{name}/metrics"],
-    ["Fault tolerance", "POST /api/v1/component-1/backends/{name}/health"],
-    ["Flow rule manager", "GET /api/v1/component-1/flows"],
-    ["Performance simulation", "POST /api/v1/component-1/workload/simulate"]
-  ];
-  els.apiMatrix.innerHTML = coverage.map(([title, route], index) => `
-    <article class="matrix-card ${index % 2 ? "gold" : component.accent}">
-      <div>
-        <span>${String(index + 1).padStart(2, "0")}</span>
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <ul><li><code>${escapeHtml(route)}</code></li></ul>
     </article>
   `).join("");
 }

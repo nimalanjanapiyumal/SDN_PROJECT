@@ -25,7 +25,11 @@ def test_frontend_assets_exist():
     assert "loginGate" in content
     assert "loginGateForm" in content
     assert "loginGateBtn" in content
-    assert "operatorLoginBtn" in content
+    assert "loginGateOtpStep" in content
+    assert "loginGateQrImage" in content
+    assert "loginGateOtpInput" in content
+    assert "loginGateVerifyBtn" in content
+    assert "otpModeStatus" in content
     assert "sdnTopologyView" in content
     assert "sdnControllerWindow" in content
     assert "sdnOpenflowList" in content
